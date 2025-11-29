@@ -452,11 +452,6 @@ export function ChatroomDetail() {
       // Create transaction
       const tx = new Transaction();
       
-      // Set sender first (required for tx.build() in sponsored transactions)
-      if (account) {
-        tx.setSender(account.address);
-      }
-      
       // Build previous_chat_id argument - must match chatroom's last_chat_id exactly
       // Note: Move function expects Option<ID>, and ID is an alias for address
       let previousChatIdArg;
@@ -491,6 +486,8 @@ export function ChatroomDetail() {
         if (sponsorApiUrl && account) {
           // Call backend API to sponsor the transaction
           try {
+            // Set sender before building (required for tx.build())
+            tx.setSender(account.address);
             
             // Build transaction and serialize to bytes
             const txBytes = await tx.build({ client });
