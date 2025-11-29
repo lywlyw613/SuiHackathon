@@ -214,16 +214,49 @@ export function ChatroomDetail() {
 
   const handleSend = async () => {
     if (!message.trim() || !key || !chatroomId || isSending || !account) return;
-    // Note: previousChatId can be null for the first message
 
     setIsSending(true);
     try {
+      // Re-fetch chatroom to get the latest last_chat_id (important for concurrency)
+      const latestChatroom = await client.getObject({
+        id: chatroomId,
+        options: {
+          showContent: true,
+        },
+      });
+
+      let latestPreviousChatId: string | null = null;
+      if (latestChatroom.data?.content && "fields" in latestChatroom.data.content) {
+        const fields = latestChatroom.data.content.fields as {
+          last_chat_id: { fields?: { id: string } } | null;
+        };
+        latestPreviousChatId = fields.last_chat_id?.fields?.id || null;
+      }
+
+      console.log("Latest previousChatId from chatroom:", latestPreviousChatId);
+      console.log("Current previousChatId state:", previousChatId);
+
+      if (latestPreviousChatId === null && previousChatId !== null) {
+        console.warn("Chatroom last_chat_id is null but state has previousChatId, using null");
+      }
+
       // Encrypt message
       const encrypted = await encryptMessage(message, key.key);
       const encryptedBytes = Array.from(encrypted);
 
       // Create transaction
       const tx = new Transaction();
+      
+      // Build previous_chat_id argument - must match chatroom's last_chat_id exactly
+      let previousChatIdArg;
+      if (latestPreviousChatId) {
+        // If chatroom has a last_chat_id, we must pass it
+        previousChatIdArg = tx.pure.id(latestPreviousChatId);
+      } else {
+        // If chatroom has no last_chat_id (shouldn't happen after first message, but handle it)
+        previousChatIdArg = tx.pure.option("address", null);
+      }
+
       tx.moveCall({
         package: PACKAGE_ID,
         module: MODULE_NAMES.SUI_CHAT,
@@ -231,7 +264,7 @@ export function ChatroomDetail() {
         arguments: [
           tx.object(chatroomId), // chatroom (shared object)
           tx.object(key.objectId), // key
-          previousChatId ? tx.pure.id(previousChatId) : tx.pure.option("address", null), // previous_chat_id (ID is address type)
+          previousChatIdArg, // previous_chat_id (must match chatroom's last_chat_id)
           tx.pure.vector("u8", encryptedBytes), // encrypted_content
         ],
       });
