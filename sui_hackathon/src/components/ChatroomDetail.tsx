@@ -314,8 +314,15 @@ export function ChatroomDetail() {
 
     // Subscribe to Pusher channel for this chatroom
     if (pusherClient) {
-      const channel = pusherClient.subscribe(`chatroom-${chatroomId}`);
+      const channelName = `chatroom-${chatroomId}`;
+      const channel = pusherClient.subscribe(channelName);
       
+      // Wait for subscription to be successful
+      channel.bind('pusher:subscription_succeeded', () => {
+        console.log('Pusher subscription succeeded for', channelName);
+      });
+
+      // Listen for new message events
       channel.bind('new-message', () => {
         // When new message event is received, refetch chats
         console.log('New message event received, refetching chats...');
@@ -538,12 +545,17 @@ export function ChatroomDetail() {
             setMessage("");
             // Trigger Pusher event to notify other clients (if Pusher is available)
             if (pusherClient && chatroomId) {
-              const channel = pusherClient.channel(`chatroom-${chatroomId}`);
-              if (channel) {
+              const channelName = `chatroom-${chatroomId}`;
+              const channel = pusherClient.channel(channelName);
+              if (channel && channel.subscribed) {
+                // Use client events for real-time updates
                 channel.trigger('client-new-message', {
                   chatroomId,
                   timestamp: Date.now(),
                 });
+                console.log('Pusher event triggered:', channelName);
+              } else {
+                console.warn('Pusher channel not subscribed:', channelName);
               }
             }
             // Refresh chats after sending - polling will pick up the new message
