@@ -370,6 +370,7 @@ export function ChatroomDetail() {
       signAndExecute(
         {
           transaction: tx,
+          account: account, // Explicitly pass the account to ensure it matches
         },
         {
           onSuccess: (result) => {
@@ -383,7 +384,12 @@ export function ChatroomDetail() {
           },
           onError: (error) => {
             console.error("Error sending message:", error);
-            alert("Failed to send message. Please try again.");
+            console.error("Current account:", account?.address);
+            if (error instanceof Error && error.message.includes("Account mismatch")) {
+              alert("Account mismatch. Please reconnect your wallet and try again.");
+            } else {
+              alert("Failed to send message. Please try again.");
+            }
           },
         }
       );
