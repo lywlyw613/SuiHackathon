@@ -483,9 +483,12 @@ export function ChatroomDetail() {
       // Handle sponsored transactions
       if (useSponsoredTx && isSponsoredTransactionsEnabled()) {
         const sponsorApiUrl = getSponsorApiUrl();
-        if (sponsorApiUrl) {
+        if (sponsorApiUrl && account) {
           // Call backend API to sponsor the transaction
           try {
+            // Set sender before building (required for tx.build())
+            tx.setSender(account.address);
+            
             // Build transaction and serialize to bytes
             const txBytes = await tx.build({ client });
             // Convert Uint8Array to base64 for JSON transmission
@@ -507,7 +510,8 @@ export function ChatroomDetail() {
               // Polling will pick up the new message
               return;
             } else {
-              console.error("Failed to sponsor transaction:", await response.text());
+              const errorText = await response.text();
+              console.error("Failed to sponsor transaction:", errorText);
               // Fall back to normal transaction
             }
           } catch (error) {
