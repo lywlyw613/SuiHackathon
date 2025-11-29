@@ -169,6 +169,19 @@ export function ChatroomDetail() {
             console.log("Fetched chat object:", chatObj.data.objectId);
             console.log("Chat fields:", fields);
 
+            // Handle previous_chat_id format first (needed to determine if it's a system message)
+            let parsedPreviousChatId: string | null = null;
+            if (fields.previous_chat_id === null) {
+              parsedPreviousChatId = null;
+            } else if (typeof fields.previous_chat_id === "string") {
+              parsedPreviousChatId = fields.previous_chat_id;
+            } else if (fields.previous_chat_id && typeof fields.previous_chat_id === "object" && "fields" in fields.previous_chat_id) {
+              parsedPreviousChatId = fields.previous_chat_id.fields?.id || null;
+            }
+
+            // Check if this is the system message (first chat with previous_chat_id = null)
+            const isSystemMessage = parsedPreviousChatId === null;
+
             // Handle encrypted_content - could be array or hex string
             let encryptedBytes: Uint8Array;
             if (Array.isArray(fields.encrypted_content)) {
@@ -235,21 +248,8 @@ export function ChatroomDetail() {
               parsedChatroomId = "";
             }
 
-            // Handle previous_chat_id format
-            let parsedPreviousChatId: string | null = null;
-            if (fields.previous_chat_id === null) {
-              parsedPreviousChatId = null;
-            } else if (typeof fields.previous_chat_id === "string") {
-              parsedPreviousChatId = fields.previous_chat_id;
-            } else if (fields.previous_chat_id && typeof fields.previous_chat_id === "object" && "fields" in fields.previous_chat_id) {
-              parsedPreviousChatId = fields.previous_chat_id.fields?.id || null;
-            }
-
             console.log("Parsed chatroom_id:", parsedChatroomId);
             console.log("Parsed previous_chat_id:", parsedPreviousChatId);
-            
-            // Check if this is the system message (first chat with previous_chat_id = null)
-            const isSystemMessage = parsedPreviousChatId === null;
 
             chatList.push({
               objectId: currentChatId,
