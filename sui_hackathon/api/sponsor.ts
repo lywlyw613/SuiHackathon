@@ -34,7 +34,7 @@ export default async function handler(req: any, res: any) {
     }
 
     // Get network (default to devnet)
-    const network = process.env.SUI_NETWORK || 'devnet';
+    const network = (process.env.SUI_NETWORK || 'devnet') as 'mainnet' | 'testnet' | 'devnet' | 'localnet';
     const rpcUrl = getFullnodeUrl(network);
     const client = new SuiClient({ url: rpcUrl });
 
@@ -93,8 +93,11 @@ export default async function handler(req: any, res: any) {
     });
 
     // Execute the transaction
+    // signedTx is a SignatureWithBytes object
+    // We need to pass the bytes and signature separately
     const result = await client.executeTransactionBlock({
-      transactionBlock: signedTx,
+      transactionBlock: signedTx.bytes,
+      signature: signedTx.signature,
       options: {
         showEffects: true,
         showEvents: true,
