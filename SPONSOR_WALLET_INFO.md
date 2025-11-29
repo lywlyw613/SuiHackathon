@@ -15,18 +15,21 @@
 enable marble cook grape emerge diesel sting clip panda suspect keen pill
 ```
 
-## 设置步骤
-
-### 1. 获取私钥
-
-运行以下命令获取私钥：
-```bash
-sui keytool export "eloquent-idocrase" ed25519
+**Bech32 私钥：**
+```
+suiprivkey1qqe2cxg3fwpg4v5n4m40wy45fl8l4mmwe0t5ymcdnz97ytpumrtnu42gfv8
 ```
 
-私钥格式应该是 64 个字符的 hex 字符串（不带 0x 前缀）。
+**Public Key (Base64)：**
+```
+AGx3iLTa0+MQpQgeTtAEYIMsCp8SgOSqbtF8HIYkIBoM
+```
 
-### 2. 在 Vercel 设置环境变量
+**当前余额：** 10 SUI ✅ (已充值)
+
+## 设置步骤
+
+### 1. 在 Vercel 设置环境变量
 
 在 Vercel 项目设置 → Environment Variables 添加：
 
@@ -34,33 +37,44 @@ sui keytool export "eloquent-idocrase" ed25519
 - **SUI_NETWORK**: `devnet`
 - **VITE_SPONSOR_API_URL**: `https://suihackathon-phi.vercel.app/api/sponsor`（或你的实际 Vercel URL）
 
-### 3. 给 Sponsor 钱包充值
+### 2. 验证设置
 
-在 devnet 上，使用以下命令充值：
-```bash
-sui client faucet 0x9d4fb7b8cb7492ff0a9d9244048849e6243146d8a1f14a65616189cf10cf56de
-```
+部署到 Vercel 后，确保：
+- ✅ 环境变量已正确设置
+- ✅ Sponsor 钱包有足够的 SUI（当前：10 SUI）
+- ✅ API 端点可以访问
 
-或者访问 Sui Discord Faucet：
-https://discord.com/channels/916379725201563759/971488439931392130
+### 3. 测试
 
-### 4. 验证余额
-
-```bash
-sui client gas 0x9d4fb7b8cb7492ff0a9d9244048849e6243146d8a1f14a65616189cf10cf56de
-```
+1. 打开应用，进入 chatroom
+2. 开启 "Use sponsored transactions" 开关
+3. 发送消息，应该不需要钱包确认（sponsor 会支付 gas）
 
 ## 安全注意事项
 
 - ⚠️ 此私钥仅用于 devnet 测试
 - ⚠️ 不要在生产环境使用此私钥
-- ⚠️ 不要将此文件提交到 Git
+- ⚠️ 不要将此文件提交到 Git（已在 .gitignore 中）
 - ⚠️ 不要在前端代码中暴露私钥
 
 ## 使用
 
 1. 部署到 Vercel 后，设置环境变量
-2. 确保 sponsor 钱包有足够的 SUI（至少 1 SUI）
+2. 确保 sponsor 钱包有足够的 SUI（当前：10 SUI）
 3. 在应用中开启 "Use sponsored transactions" 开关
-4. 发送消息时，sponsor 会支付 gas 费用
+4. 发送消息时，sponsor 会支付 gas 费用，用户无需签名
 
+## 检查余额
+
+```bash
+sui client gas 0x9d4fb7b8cb7492ff0a9d9244048849e6243146d8a1f14a65616189cf10cf56de
+```
+
+## 充值（如果需要）
+
+```bash
+sui client faucet --address 0x9d4fb7b8cb7492ff0a9d9244048849e6243146d8a1f14a65616189cf10cf56de
+```
+
+或访问 Sui Discord Faucet：
+https://discord.com/channels/916379725201563759/971488439931392130
