@@ -228,9 +228,22 @@ export function ChatroomDetail() {
       let latestPreviousChatId: string | null = null;
       if (latestChatroom.data?.content && "fields" in latestChatroom.data.content) {
         const fields = latestChatroom.data.content.fields as {
-          last_chat_id: { fields?: { id: string } } | null;
+          last_chat_id: { fields?: { id: string } } | string | null;
         };
-        latestPreviousChatId = fields.last_chat_id?.fields?.id || null;
+        
+        // Handle different formats of last_chat_id
+        if (fields.last_chat_id === null) {
+          latestPreviousChatId = null;
+        } else if (typeof fields.last_chat_id === "string") {
+          latestPreviousChatId = fields.last_chat_id;
+        } else if (fields.last_chat_id && typeof fields.last_chat_id === "object" && "fields" in fields.last_chat_id) {
+          latestPreviousChatId = fields.last_chat_id.fields?.id || null;
+        }
+        
+        console.log("Raw last_chat_id from chatroom:", fields.last_chat_id);
+        console.log("Parsed latestPreviousChatId:", latestPreviousChatId);
+      } else {
+        console.error("Failed to get chatroom content:", latestChatroom);
       }
 
       console.log("Latest previousChatId from chatroom:", latestPreviousChatId);
@@ -248,14 +261,19 @@ export function ChatroomDetail() {
       const tx = new Transaction();
       
       // Build previous_chat_id argument - must match chatroom's last_chat_id exactly
+      // Note: Move function expects Option<ID>, and ID is address type
       let previousChatIdArg;
       if (latestPreviousChatId) {
-        // If chatroom has a last_chat_id, we must pass it
-        previousChatIdArg = tx.pure.id(latestPreviousChatId);
+        // If chatroom has a last_chat_id, wrap it in Option
+        // Use option with the ID value
+        previousChatIdArg = tx.pure.option("address", latestPreviousChatId);
       } else {
-        // If chatroom has no last_chat_id (shouldn't happen after first message, but handle it)
+        // If chatroom has no last_chat_id, pass None
         previousChatIdArg = tx.pure.option("address", null);
       }
+      
+      console.log("previousChatIdArg:", previousChatIdArg);
+      console.log("latestPreviousChatId:", latestPreviousChatId);
 
       tx.moveCall({
         package: PACKAGE_ID,
