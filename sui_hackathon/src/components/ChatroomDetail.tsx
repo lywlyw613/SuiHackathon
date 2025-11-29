@@ -6,7 +6,7 @@ import { encryptMessage } from "../lib/crypto";
 import { ChatData, KeyObject } from "../types";
 import { formatAddress } from "../lib/utils";
 import { formatDistanceToNow } from "date-fns";
-import { Box, Flex, Text, Button, TextField, Card, Spinner } from "@radix-ui/themes";
+import { Box, Flex, Text, Button, TextField, Card } from "@radix-ui/themes";
 
 export function ChatroomDetail() {
   const { chatroomId } = useParams<{ chatroomId: string }>();
