@@ -8,7 +8,8 @@ import { ChatData, KeyObject } from "../types";
 import { formatAddress } from "../lib/utils";
 import { formatDistanceToNow } from "date-fns";
 import { pusherClient } from "../lib/pusher-client";
-import { Box, Flex, Text, Button, TextField, Card } from "@radix-ui/themes";
+import { isSponsoredTransactionsEnabled, getSponsorApiUrl } from "../lib/sponsored-transactions";
+import { Box, Flex, Text, Button, TextField, Card, Switch } from "@radix-ui/themes";
 
 export function ChatroomDetail() {
   const { chatroomId } = useParams<{ chatroomId: string }>();
@@ -19,6 +20,7 @@ export function ChatroomDetail() {
   const [key, setKey] = useState<KeyObject | null>(null);
   const [chats, setChats] = useState<ChatData[]>([]);
   const [previousChatId, setPreviousChatId] = useState<string | null>(null);
+  const [useSponsoredTx, setUseSponsoredTx] = useState(false);
   const { mutate: signAndExecute } = useSignAndExecuteTransaction();
   const client = useSuiClient();
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -478,6 +480,39 @@ export function ChatroomDetail() {
         ],
       });
 
+      // Handle sponsored transactions
+      if (useSponsoredTx && isSponsoredTransactionsEnabled()) {
+        const sponsorApiUrl = getSponsorApiUrl();
+        if (sponsorApiUrl) {
+          // Call backend API to sponsor the transaction
+          try {
+            const txBytes = await tx.build({ client });
+            const response = await fetch(sponsorApiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                transaction: txBytes,
+                sender: account.address,
+              }),
+            });
+            
+            if (response.ok) {
+              const result = await response.json();
+              console.log("Sponsored transaction sent:", result);
+              setMessage("");
+              // Polling will pick up the new message
+              return;
+            } else {
+              console.error("Failed to sponsor transaction:", await response.text());
+              // Fall back to normal transaction
+            }
+          } catch (error) {
+            console.error("Error sponsoring transaction:", error);
+            // Fall back to normal transaction
+          }
+        }
+      }
+
       signAndExecute(
         {
           transaction: tx,
@@ -601,18 +636,32 @@ export function ChatroomDetail() {
           padding: "var(--space-4)",
         }}
       >
-        <Flex gap="2">
-          <TextField.Root
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder="Type a message..."
-            disabled={isSending}
-            style={{ flex: 1 }}
-          />
-          <Button onClick={handleSend} disabled={!message.trim() || isSending} size="3">
-            {isSending ? "Sending..." : "Send"}
-          </Button>
+        <Flex direction="column" gap="2">
+          {isSponsoredTransactionsEnabled() && (
+            <Flex align="center" gap="2">
+              <Switch
+                checked={useSponsoredTx}
+                onCheckedChange={setUseSponsoredTx}
+                id="sponsored-tx"
+              />
+              <Text size="2" as="label" htmlFor="sponsored-tx" style={{ cursor: "pointer" }}>
+                Use sponsored transactions (no gas fee, but requires backend)
+              </Text>
+            </Flex>
+          )}
+          <Flex gap="2">
+            <TextField.Root
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+              placeholder="Type a message..."
+              disabled={isSending}
+              style={{ flex: 1 }}
+            />
+            <Button onClick={handleSend} disabled={!message.trim() || isSending} size="3">
+              {isSending ? "Sending..." : "Send"}
+            </Button>
+          </Flex>
         </Flex>
       </Box>
     </Flex>
