@@ -39,7 +39,22 @@ export default async function handler(req: any, res: any) {
     const client = new SuiClient({ url: rpcUrl });
 
     // Create sponsor keypair from private key
-    const sponsorKeypair = Ed25519Keypair.fromSecretKey(fromHEX(sponsorPrivateKey));
+    // Support both Bech32 format (suiprivkey...) and hex format
+    let sponsorKeypair: Ed25519Keypair;
+    try {
+      if (sponsorPrivateKey.startsWith('suiprivkey')) {
+        // Bech32 format - directly use the string
+        sponsorKeypair = Ed25519Keypair.fromSecretKey(sponsorPrivateKey);
+      } else {
+        // Hex format
+        sponsorKeypair = Ed25519Keypair.fromSecretKey(fromHEX(sponsorPrivateKey));
+      }
+    } catch (error: any) {
+      return res.status(500).json({ 
+        error: 'Invalid sponsor private key format',
+        message: error.message 
+      });
+    }
     const sponsorAddress = sponsorKeypair.toSuiAddress();
 
     // Deserialize the transaction (txBytes is base64 encoded)
