@@ -119,9 +119,21 @@ export function ChatroomDetail() {
   useEffect(() => {
     if (chatroomData?.data?.content && "fields" in chatroomData.data.content) {
       const fields = chatroomData.data.content.fields as {
-        last_chat_id: { fields?: { id: string } } | null;
+        last_chat_id: { fields?: { id: string } } | string | null;
       };
-      setPreviousChatId(fields.last_chat_id?.fields?.id || null);
+      
+      // Handle different formats of last_chat_id (same as in handleSend)
+      let parsedLastChatId: string | null = null;
+      if (fields.last_chat_id === null) {
+        parsedLastChatId = null;
+      } else if (typeof fields.last_chat_id === "string") {
+        parsedLastChatId = fields.last_chat_id;
+      } else if (fields.last_chat_id && typeof fields.last_chat_id === "object" && "fields" in fields.last_chat_id) {
+        parsedLastChatId = fields.last_chat_id.fields?.id || null;
+      }
+      
+      console.log("Parsed last_chat_id from chatroom:", parsedLastChatId);
+      setPreviousChatId(parsedLastChatId);
     }
   }, [chatroomData]);
 
@@ -147,42 +159,81 @@ export function ChatroomDetail() {
 
           if (chatObj.data?.content && "fields" in chatObj.data.content) {
             const fields = chatObj.data.content.fields as {
-              chatroom_id: string;
+              chatroom_id: string | { fields?: { id: string } };
               sender: string;
               timestamp: string;
-              previous_chat_id: { fields?: { id: string } } | null;
-              encrypted_content: string;
+              previous_chat_id: { fields?: { id: string } } | string | null;
+              encrypted_content: string | number[];
             };
+
+            console.log("Fetched chat object:", chatObj.data.objectId);
+            console.log("Chat fields:", fields);
+
+            // Handle encrypted_content - could be array or hex string
+            let encryptedBytes: Uint8Array;
+            if (Array.isArray(fields.encrypted_content)) {
+              // If it's an array of numbers
+              encryptedBytes = new Uint8Array(fields.encrypted_content);
+            } else if (typeof fields.encrypted_content === "string") {
+              // If it's a hex string
+              const hexContent = fields.encrypted_content;
+              encryptedBytes = new Uint8Array(
+                hexContent.match(/.{1,2}/g)?.map((b) => parseInt(b, 16)) || []
+              );
+            } else {
+              encryptedBytes = new Uint8Array();
+            }
 
             // Decrypt content
             let decryptedContent = "";
             try {
-              // encrypted_content is stored as hex string
-              const hexContent = fields.encrypted_content;
-              const encryptedBytes = new Uint8Array(
-                hexContent.match(/.{1,2}/g)?.map((b) => parseInt(b, 16)) || []
-              );
-              decryptedContent = await decryptMessage(encryptedBytes, key.key);
+              // For system message (first chat), encrypted_content might be empty or unencrypted
+              if (encryptedBytes.length === 0) {
+                decryptedContent = "System Message: This chat is encrypted and recorded on Sui Chain";
+              } else {
+                decryptedContent = await decryptMessage(encryptedBytes, key.key);
+              }
             } catch (e) {
               console.error("Error decrypting:", e);
-              // For system message (first chat), content might not be encrypted
-              if (fields.encrypted_content) {
-                decryptedContent = fields.encrypted_content;
-              }
+              // Fallback: show raw content if decryption fails
+              decryptedContent = "[Decryption Failed]";
             }
+
+            // Handle chatroom_id format
+            let parsedChatroomId: string;
+            if (typeof fields.chatroom_id === "string") {
+              parsedChatroomId = fields.chatroom_id;
+            } else if (fields.chatroom_id && typeof fields.chatroom_id === "object" && "fields" in fields.chatroom_id) {
+              parsedChatroomId = fields.chatroom_id.fields?.id || "";
+            } else {
+              parsedChatroomId = "";
+            }
+
+            // Handle previous_chat_id format
+            let parsedPreviousChatId: string | null = null;
+            if (fields.previous_chat_id === null) {
+              parsedPreviousChatId = null;
+            } else if (typeof fields.previous_chat_id === "string") {
+              parsedPreviousChatId = fields.previous_chat_id;
+            } else if (fields.previous_chat_id && typeof fields.previous_chat_id === "object" && "fields" in fields.previous_chat_id) {
+              parsedPreviousChatId = fields.previous_chat_id.fields?.id || null;
+            }
+
+            console.log("Parsed chatroom_id:", parsedChatroomId);
+            console.log("Parsed previous_chat_id:", parsedPreviousChatId);
 
             chatList.push({
               objectId: currentChatId,
-              chatroomId: fields.chatroom_id,
+              chatroomId: parsedChatroomId,
               sender: fields.sender,
               timestamp: Number(fields.timestamp),
-              previousChatId: fields.previous_chat_id?.fields?.id || null,
-              encryptedContent: new Uint8Array(),
+              previousChatId: parsedPreviousChatId,
+              encryptedContent: encryptedBytes,
               decryptedContent,
             });
 
             // Move to previous chat
-            currentChatId = fields.previous_chat_id?.fields?.id || null;
+            currentChatId = parsedPreviousChatId;
           } else {
             break;
           }
