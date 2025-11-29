@@ -6,30 +6,36 @@ zkLogin 是 Sui 的一个功能，允许用户使用 Google、Facebook、Twitch 
 
 ## 设置步骤
 
-### 1. 获取 Google OAuth Client ID
+### 1. Google OAuth Client ID
 
-1. 前往 [Google Cloud Console](https://console.cloud.google.com/)
-2. 创建新项目或选择现有项目
-3. 启用 Google+ API：
-   - 导航到 "APIs & Services" > "Library"
-   - 搜索 "Google+ API" 并启用
-4. 创建 OAuth 2.0 凭据：
-   - 导航到 "APIs & Services" > "Credentials"
-   - 点击 "Create Credentials" > "OAuth client ID"
-   - 选择 "Web application"
-   - **重要：添加授权重定向 URI**：
-     - `http://localhost:5173` (开发环境)
-     - `http://localhost:5173/` (带斜线版本)
-     - 你的生产环境 URL（如果已部署）
-5. 复制 Client ID
+✅ **已创建**
+
+- **Client ID**: `3395270498-ojjjo90nf63pe067c266tdu13qj4hq1d.apps.googleusercontent.com`
+
+### 2. 添加重定向 URI
+
+在 Google Cloud Console 中，编辑你的 OAuth 2.0 Client ID，添加以下重定向 URI：
+
+- `https://suihackathon-phi.vercel.app`
+- `https://suihackathon-phi.vercel.app/`
+- `http://localhost:5173`（开发环境）
 
 ### 2. 设置环境变量
+
+#### 本地开发
 
 在 `sui_hackathon` 目录下创建 `.env` 文件：
 
 ```env
-VITE_GOOGLE_CLIENT_ID=your-google-client-id-here
+VITE_GOOGLE_CLIENT_ID=3395270498-ojjjo90nf63pe067c266tdu13qj4hq1d.apps.googleusercontent.com
 ```
+
+#### Vercel 部署
+
+在 Vercel Dashboard 中设置环境变量：
+- Key: `VITE_GOOGLE_CLIENT_ID`
+- Value: `3395270498-ojjjo90nf63pe067c266tdu13qj4hq1d.apps.googleusercontent.com`
+- Environment: Production, Preview, Development（全部勾选）
 
 ### 3. 重启开发服务器
 
