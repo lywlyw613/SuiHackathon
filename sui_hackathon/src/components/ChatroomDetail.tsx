@@ -373,34 +373,40 @@ export function ChatroomDetail() {
           });
 
           // Listen for new message events (client events must start with 'client-')
-          channel.bind('client-new-message', (data: any) => {
+          const messageHandler = (data: any) => {
             console.log(`[Pusher] 📨 New message event received for ${channelName}:`, data);
             // Trigger refetch by updating previousChatId
             if (chatroomId) {
-              client.getObject({
-                id: chatroomId,
-                options: { showContent: true },
-              }).then((chatroom) => {
-                if (chatroom.data?.content && "fields" in chatroom.data.content) {
-                  const fields = chatroom.data.content.fields as {
-                    last_chat_id: { fields?: { id: string } } | string | null;
-                  };
-                  let parsedLastChatId: string | null = null;
-                  if (fields.last_chat_id === null) {
-                    parsedLastChatId = null;
-                  } else if (typeof fields.last_chat_id === "string") {
-                    parsedLastChatId = fields.last_chat_id;
-                  } else if (fields.last_chat_id && typeof fields.last_chat_id === "object" && "fields" in fields.last_chat_id) {
-                    parsedLastChatId = fields.last_chat_id.fields?.id || null;
+              // Small delay to ensure transaction is processed on-chain
+              setTimeout(() => {
+                client.getObject({
+                  id: chatroomId,
+                  options: { showContent: true },
+                }).then((chatroom) => {
+                  if (chatroom.data?.content && "fields" in chatroom.data.content) {
+                    const fields = chatroom.data.content.fields as {
+                      last_chat_id: { fields?: { id: string } } | string | null;
+                    };
+                    let parsedLastChatId: string | null = null;
+                    if (fields.last_chat_id === null) {
+                      parsedLastChatId = null;
+                    } else if (typeof fields.last_chat_id === "string") {
+                      parsedLastChatId = fields.last_chat_id;
+                    } else if (fields.last_chat_id && typeof fields.last_chat_id === "object" && "fields" in fields.last_chat_id) {
+                      parsedLastChatId = fields.last_chat_id.fields?.id || null;
+                    }
+                    console.log(`[Pusher] 🔄 Updating previousChatId to: ${parsedLastChatId}`);
+                    setPreviousChatId(parsedLastChatId);
                   }
-                  console.log(`[Pusher] 🔄 Updating previousChatId to: ${parsedLastChatId}`);
-                  setPreviousChatId(parsedLastChatId);
-                }
-              }).catch((err) => {
-                console.error('[Pusher] ❌ Error refetching chatroom after event:', err);
-              });
+                }).catch((err) => {
+                  console.error('[Pusher] ❌ Error refetching chatroom after event:', err);
+                });
+              }, 1000); // Wait 1 second for transaction to be processed
             }
-          });
+          };
+          
+          channel.bind('client-new-message', messageHandler);
+          console.log(`[Pusher] 👂 Listening for 'client-new-message' events on ${channelName}`);
 
           // Handle subscription errors
           channel.bind('pusher:subscription_error', (error: any) => {
@@ -668,20 +674,25 @@ export function ChatroomDetail() {
                                 timestamp: Date.now(),
                                 sender: account.address,
                               };
-                              pusherChannelRef.current.trigger('client-new-message', eventData);
-                              console.log('[Pusher] 📤 Event triggered (sponsored tx):', eventData);
+                              console.log('[Pusher] 📤 Attempting to trigger event (sponsored tx)...');
+                              const result = pusherChannelRef.current.trigger('client-new-message', eventData);
+                              console.log('[Pusher] ✅ Event triggered (sponsored tx):', eventData, 'Result:', result);
                             } else {
-                              console.warn('[Pusher] ⚠️ Channel not subscribed yet, will rely on polling');
+                              console.warn('[Pusher] ⚠️ Channel not subscribed yet (state:', pusherChannelRef.current.state, '), will rely on polling');
                             }
                           } catch (error: any) {
                             // Client events might not be enabled in Pusher app settings
                             console.error('[Pusher] ❌ Failed to trigger event:', error?.message || error);
-                            console.error('[Pusher] Make sure "Enable client events" is ON in Pusher Dashboard');
+                            console.error('[Pusher] 💡 Make sure "Enable client events" is ON in Pusher Dashboard:');
+                            console.error('[Pusher]    1. Go to https://dashboard.pusher.com/');
+                            console.error('[Pusher]    2. Select your app');
+                            console.error('[Pusher]    3. Settings → App Settings');
+                            console.error('[Pusher]    4. Enable "Enable client events"');
                           }
                         } else {
                           console.warn('[Pusher] ⚠️ Channel ref not available');
                         }
-                      }, 500); // Wait 500ms for transaction to be processed
+                      }, 1000); // Wait 1 second for transaction to be processed
                       setIsSending(false);
                     } else {
                       const errorText = await response.text();
@@ -731,20 +742,25 @@ export function ChatroomDetail() {
                       timestamp: Date.now(),
                       sender: account.address,
                     };
-                    pusherChannelRef.current.trigger('client-new-message', eventData);
-                    console.log('[Pusher] 📤 Event triggered (normal tx):', eventData);
+                    console.log('[Pusher] 📤 Attempting to trigger event (normal tx)...');
+                    const result = pusherChannelRef.current.trigger('client-new-message', eventData);
+                    console.log('[Pusher] ✅ Event triggered (normal tx):', eventData, 'Result:', result);
                   } else {
-                    console.warn('[Pusher] ⚠️ Channel not subscribed yet, will rely on polling');
+                    console.warn('[Pusher] ⚠️ Channel not subscribed yet (state:', pusherChannelRef.current.state, '), will rely on polling');
                   }
                 } catch (error: any) {
                   // Client events might not be enabled in Pusher app settings
                   console.error('[Pusher] ❌ Failed to trigger event:', error?.message || error);
-                  console.error('[Pusher] Make sure "Enable client events" is ON in Pusher Dashboard');
+                  console.error('[Pusher] 💡 Make sure "Enable client events" is ON in Pusher Dashboard:');
+                  console.error('[Pusher]    1. Go to https://dashboard.pusher.com/');
+                  console.error('[Pusher]    2. Select your app');
+                  console.error('[Pusher]    3. Settings → App Settings');
+                  console.error('[Pusher]    4. Enable "Enable client events"');
                 }
               } else {
                 console.warn('[Pusher] ⚠️ Channel ref not available');
               }
-            }, 500); // Wait 500ms for transaction to be processed
+            }, 1000); // Wait 1 second for transaction to be processed
             // Refresh chats after sending - polling will pick up the new message
             // No need to reload the page anymore
           },
