@@ -350,55 +350,87 @@ export function ChatroomDetail() {
     if (!chatroomId || !key || !client) return;
 
     // Subscribe to Pusher channel for this chatroom
-    if (pusherClient) {
+    if (pusherClient && pusherClient.connection.state === 'connected') {
       const channelName = `chatroom-${chatroomId}`;
-      const channel = pusherClient.subscribe(channelName);
       
-      // Store channel reference for triggering events
-      pusherChannelRef.current = channel;
-      
-      // Wait for subscription to be successful
-      channel.bind('pusher:subscription_succeeded', () => {
-        console.log('Pusher subscription succeeded for', channelName);
-      });
+      // Wait for connection to be ready
+      const subscribeToChannel = () => {
+        if (pusherClient && pusherClient.connection.state === 'connected') {
+          const channel = pusherClient.subscribe(channelName);
+          
+          // Store channel reference for triggering events
+          pusherChannelRef.current = channel;
+          
+          // Wait for subscription to be successful
+          channel.bind('pusher:subscription_succeeded', () => {
+            console.log('Pusher subscription succeeded for', channelName);
+          });
 
-      // Listen for new message events (client events must start with 'client-')
-      channel.bind('client-new-message', (data: any) => {
-        // When new message event is received, refetch chats
-        console.log('New message event received, refetching chats...', data);
-        // Trigger refetch by updating previousChatId
-        client.getObject({
-          id: chatroomId,
-          options: { showContent: true },
-        }).then((chatroom) => {
-          if (chatroom.data?.content && "fields" in chatroom.data.content) {
-            const fields = chatroom.data.content.fields as {
-              last_chat_id: { fields?: { id: string } } | string | null;
-            };
-            let parsedLastChatId: string | null = null;
-            if (fields.last_chat_id === null) {
-              parsedLastChatId = null;
-            } else if (typeof fields.last_chat_id === "string") {
-              parsedLastChatId = fields.last_chat_id;
-            } else if (fields.last_chat_id && typeof fields.last_chat_id === "object" && "fields" in fields.last_chat_id) {
-              parsedLastChatId = fields.last_chat_id.fields?.id || null;
-            }
-            setPreviousChatId(parsedLastChatId);
-          }
-        });
-      });
+          // Listen for new message events (client events must start with 'client-')
+          channel.bind('client-new-message', (data: any) => {
+            // When new message event is received, refetch chats
+            console.log('New message event received, refetching chats...', data);
+            // Trigger refetch by updating previousChatId
+            client.getObject({
+              id: chatroomId,
+              options: { showContent: true },
+            }).then((chatroom) => {
+              if (chatroom.data?.content && "fields" in chatroom.data.content) {
+                const fields = chatroom.data.content.fields as {
+                  last_chat_id: { fields?: { id: string } } | string | null;
+                };
+                let parsedLastChatId: string | null = null;
+                if (fields.last_chat_id === null) {
+                  parsedLastChatId = null;
+                } else if (typeof fields.last_chat_id === "string") {
+                  parsedLastChatId = fields.last_chat_id;
+                } else if (fields.last_chat_id && typeof fields.last_chat_id === "object" && "fields" in fields.last_chat_id) {
+                  parsedLastChatId = fields.last_chat_id.fields?.id || null;
+                }
+                setPreviousChatId(parsedLastChatId);
+              }
+            }).catch((err) => {
+              console.error('Error refetching chatroom after Pusher event:', err);
+            });
+          });
 
-      // Handle subscription errors
-      channel.bind('pusher:subscription_error', (error: any) => {
-        console.error('Pusher subscription error:', error);
-      });
+          // Handle subscription errors
+          channel.bind('pusher:subscription_error', (error: any) => {
+            console.error('Pusher subscription error:', error);
+            // If subscription fails, we'll rely on polling
+          });
 
-      // Cleanup on unmount
-      return () => {
-        channel.unbind_all();
-        channel.unsubscribe();
-        pusherChannelRef.current = null;
+          // Cleanup function
+          return () => {
+            channel.unbind_all();
+            channel.unsubscribe();
+            pusherChannelRef.current = null;
+          };
+        }
+        return () => {}; // Return empty cleanup if not subscribed
       };
+
+      // Subscribe immediately if connected, otherwise wait for connection
+      let cleanup = subscribeToChannel();
+      
+      // If not connected, wait for connection
+      if (pusherClient.connection.state !== 'connected') {
+        const connectionHandler = () => {
+          cleanup = subscribeToChannel();
+        };
+        pusherClient.connection.bind('connected', connectionHandler);
+        
+        return () => {
+          pusherClient?.connection.unbind('connected', connectionHandler);
+          if (cleanup) cleanup();
+        };
+      }
+
+      return cleanup;
+    } else {
+      // Pusher not available or not connected - will rely on polling
+      console.warn('Pusher not available or not connected, using polling only');
+      return () => {};
     }
 
     // Set up polling to check for new messages every 3 seconds
@@ -602,19 +634,24 @@ export function ChatroomDetail() {
                       const result = await response.json();
                       console.log("Sponsored transaction sent:", result);
                       setMessage("");
-                      // Trigger Pusher event
-                      if (pusherChannelRef.current && pusherChannelRef.current.subscribed) {
+                      // Trigger Pusher event (only if channel is subscribed)
+                      if (pusherChannelRef.current) {
                         try {
-                          pusherChannelRef.current.trigger('client-new-message', {
-                            chatroomId,
-                            timestamp: Date.now(),
-                          });
-                          console.log('Pusher event triggered (sponsored tx)');
-                        } catch (error) {
-                          console.error('Error triggering Pusher event:', error);
+                          // Check if channel is subscribed before triggering
+                          if (pusherChannelRef.current.subscribed) {
+                            pusherChannelRef.current.trigger('client-new-message', {
+                              chatroomId,
+                              timestamp: Date.now(),
+                            });
+                            console.log('Pusher event triggered (sponsored tx)');
+                          } else {
+                            console.warn('Pusher channel not subscribed yet, will rely on polling');
+                          }
+                        } catch (error: any) {
+                          // Client events might not be enabled in Pusher app settings
+                          // This is okay, we'll rely on polling
+                          console.warn('Could not trigger Pusher client event (may need to enable in Pusher dashboard):', error?.message || error);
                         }
-                      } else {
-                        console.warn('Pusher channel not ready for sponsored tx');
                       }
                       setIsSending(false);
                     } else {
