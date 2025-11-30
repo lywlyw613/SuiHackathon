@@ -754,41 +754,63 @@ export function ChatroomDetail() {
                   }}
                 >
                   {/* Avatar */}
-                  <img
-                    src={avatarUrl}
-                    alt={formatAddress(chat.sender)}
+                  <Box
+                    onClick={() => navigate(`/profile/${chat.sender}`)}
                     style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "50%",
-                      objectFit: "cover",
-                      border: "2px solid var(--x-border)",
+                      cursor: "pointer",
                       flexShrink: 0,
                     }}
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = "none";
-                      const parent = target.parentElement;
-                      if (parent) {
-                        const fallback = document.createElement("div");
-                        fallback.style.cssText = `
-                          width: 40px;
-                          height: 40px;
-                          border-radius: 50%;
-                          background: var(--blue-9);
-                          display: flex;
-                          align-items: center;
-                          justify-content: center;
-                          color: white;
-                          font-weight: bold;
-                          font-size: 14px;
-                          flex-shrink: 0;
-                        `;
-                        fallback.textContent = formatAddress(chat.sender).slice(0, 2).toUpperCase();
-                        parent.insertBefore(fallback, target);
-                      }
-                    }}
-                  />
+                  >
+                    <img
+                      src={avatarUrl}
+                      alt={formatAddress(chat.sender)}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "50%",
+                        objectFit: "cover",
+                        border: "2px solid var(--x-border)",
+                        transition: "opacity 0.2s",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.opacity = "0.8";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.opacity = "1";
+                      }}
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = "none";
+                        const parent = target.parentElement;
+                        if (parent) {
+                          const fallback = document.createElement("div");
+                          fallback.style.cssText = `
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 50%;
+                            background: var(--blue-9);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-weight: bold;
+                            font-size: 14px;
+                            cursor: pointer;
+                            transition: opacity 0.2s;
+                          `;
+                          fallback.textContent = formatAddress(chat.sender).slice(0, 2).toUpperCase();
+                          fallback.onclick = () => navigate(`/profile/${chat.sender}`);
+                          fallback.onmouseenter = () => {
+                            fallback.style.opacity = "0.8";
+                          };
+                          fallback.onmouseleave = () => {
+                            fallback.style.opacity = "1";
+                          };
+                          parent.insertBefore(fallback, target);
+                        }
+                      }}
+                    />
+                  </Box>
                   
                   {/* Message Content */}
                   <Flex direction="column" gap="1" style={{ flex: 1 }}>
