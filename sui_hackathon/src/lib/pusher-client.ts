@@ -27,11 +27,18 @@ if (typeof window !== 'undefined' && PUSHER_KEY) {
   });
   
   pusherClient.connection.bind('error', (err: any) => {
-    console.error('Pusher connection error:', err);
-    // Don't log as error if it's just a connection issue that will retry
-    if (err.error?.data?.code !== 1006) {
-      console.error('Pusher error details:', err);
+    // Only log non-critical errors
+    // Code 1006 is a normal connection close, will auto-retry
+    // Code 1000 is a normal closure
+    const errorCode = err?.error?.data?.code || err?.code;
+    if (errorCode !== 1006 && errorCode !== 1000) {
+      console.warn('Pusher connection error (non-critical):', {
+        type: err?.type,
+        code: errorCode,
+        message: err?.error?.data?.message || err?.message,
+      });
     }
+    // Don't log as error - Pusher will auto-retry, and we have polling as fallback
   });
 }
 

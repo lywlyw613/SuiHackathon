@@ -349,13 +349,20 @@ export function ChatroomDetail() {
   useEffect(() => {
     if (!chatroomId || !key || !client) return;
 
-    // Subscribe to Pusher channel for this chatroom
-    if (pusherClient && pusherClient.connection.state === 'connected') {
+    // Subscribe to Pusher channel for this chatroom (if available)
+    // Note: Even if Pusher fails, polling will still work
+    let pusherCleanup: (() => void) | null = null;
+    
+    if (pusherClient) {
       const channelName = `chatroom-${chatroomId}`;
       
       // Wait for connection to be ready
       const subscribeToChannel = () => {
-        if (pusherClient && pusherClient.connection.state === 'connected') {
+        if (!pusherClient) return () => {};
+        
+        try {
+          // Try to subscribe regardless of connection state
+          // Pusher will queue the subscription if not connected yet
           const channel = pusherClient.subscribe(channelName);
           
           // Store channel reference for triggering events
@@ -371,66 +378,69 @@ export function ChatroomDetail() {
             // When new message event is received, refetch chats
             console.log('New message event received, refetching chats...', data);
             // Trigger refetch by updating previousChatId
-            client.getObject({
-              id: chatroomId,
-              options: { showContent: true },
-            }).then((chatroom) => {
-              if (chatroom.data?.content && "fields" in chatroom.data.content) {
-                const fields = chatroom.data.content.fields as {
-                  last_chat_id: { fields?: { id: string } } | string | null;
-                };
-                let parsedLastChatId: string | null = null;
-                if (fields.last_chat_id === null) {
-                  parsedLastChatId = null;
-                } else if (typeof fields.last_chat_id === "string") {
-                  parsedLastChatId = fields.last_chat_id;
-                } else if (fields.last_chat_id && typeof fields.last_chat_id === "object" && "fields" in fields.last_chat_id) {
-                  parsedLastChatId = fields.last_chat_id.fields?.id || null;
+            if (chatroomId) {
+              client.getObject({
+                id: chatroomId,
+                options: { showContent: true },
+              }).then((chatroom) => {
+                if (chatroom.data?.content && "fields" in chatroom.data.content) {
+                  const fields = chatroom.data.content.fields as {
+                    last_chat_id: { fields?: { id: string } } | string | null;
+                  };
+                  let parsedLastChatId: string | null = null;
+                  if (fields.last_chat_id === null) {
+                    parsedLastChatId = null;
+                  } else if (typeof fields.last_chat_id === "string") {
+                    parsedLastChatId = fields.last_chat_id;
+                  } else if (fields.last_chat_id && typeof fields.last_chat_id === "object" && "fields" in fields.last_chat_id) {
+                    parsedLastChatId = fields.last_chat_id.fields?.id || null;
+                  }
+                  setPreviousChatId(parsedLastChatId);
                 }
-                setPreviousChatId(parsedLastChatId);
-              }
-            }).catch((err) => {
-              console.error('Error refetching chatroom after Pusher event:', err);
-            });
+              }).catch((err) => {
+                console.error('Error refetching chatroom after Pusher event:', err);
+              });
+            }
           });
 
-          // Handle subscription errors
+          // Handle subscription errors (non-critical, we have polling)
           channel.bind('pusher:subscription_error', (error: any) => {
-            console.error('Pusher subscription error:', error);
-            // If subscription fails, we'll rely on polling
+            console.warn('Pusher subscription error (will use polling):', error?.error?.data?.message || error?.message);
+            // If subscription fails, we'll rely on polling - this is okay
           });
 
           // Cleanup function
           return () => {
-            channel.unbind_all();
-            channel.unsubscribe();
+            try {
+              channel.unbind_all();
+              channel.unsubscribe();
+            } catch (e) {
+              // Ignore cleanup errors
+            }
             pusherChannelRef.current = null;
           };
+        } catch (error) {
+          console.warn('Failed to subscribe to Pusher channel (will use polling):', error);
+          return () => {}; // Return empty cleanup if subscription fails
         }
-        return () => {}; // Return empty cleanup if not subscribed
       };
 
-      // Subscribe immediately if connected, otherwise wait for connection
-      let cleanup = subscribeToChannel();
+      // Subscribe immediately (Pusher will handle connection state)
+      pusherCleanup = subscribeToChannel();
       
-      // If not connected, wait for connection
-      if (pusherClient.connection.state !== 'connected') {
-        const connectionHandler = () => {
-          cleanup = subscribeToChannel();
-        };
-        pusherClient.connection.bind('connected', connectionHandler);
-        
-        return () => {
-          pusherClient?.connection.unbind('connected', connectionHandler);
-          if (cleanup) cleanup();
-        };
-      }
-
-      return cleanup;
-    } else {
-      // Pusher not available or not connected - will rely on polling
-      console.warn('Pusher not available or not connected, using polling only');
-      return () => {};
+      // Also listen for connection events to resubscribe if needed
+      const connectionHandler = () => {
+        if (pusherCleanup) pusherCleanup();
+        pusherCleanup = subscribeToChannel();
+      };
+      
+      pusherClient.connection.bind('connected', connectionHandler);
+      
+      // Return cleanup that also unbinds connection handler
+      return () => {
+        pusherClient?.connection.unbind('connected', connectionHandler);
+        if (pusherCleanup) pusherCleanup();
+      };
     }
 
     // Set up polling to check for new messages every 3 seconds
