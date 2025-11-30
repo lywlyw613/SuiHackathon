@@ -32,10 +32,14 @@ export default async function handler(req: any, res: any) {
     // Log connection string (without password) for debugging
     const uriWithoutPassword = uri.replace(/:[^:@]+@/, ':****@');
     console.log('Attempting to connect to MongoDB:', uriWithoutPassword);
+    console.log('URI length:', uri.length);
+    console.log('URI starts with mongodb+srv:', uri.startsWith('mongodb+srv'));
 
     const client = new MongoClient(uri, {
-      connectTimeoutMS: 10000,
-      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 15000,
+      serverSelectionTimeoutMS: 15000,
+      maxPoolSize: 10,
+      minPoolSize: 1,
     });
 
     const startTime = Date.now();
@@ -60,12 +64,38 @@ export default async function handler(req: any, res: any) {
     });
   } catch (error: any) {
     console.error('MongoDB test error:', error);
-    return res.status(500).json({
+    console.error('Error name:', error.name);
+    console.error('Error code:', error.code);
+    console.error('Error message:', error.message);
+    
+    // Provide more detailed error information
+    let errorDetails: any = {
       error: 'MongoDB connection failed',
       message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       errorType: error.constructor.name,
-    });
+      errorName: error.name,
+    };
+    
+    if (error.code) {
+      errorDetails.errorCode = error.code;
+    }
+    
+    // Check for common error patterns
+    if (error.message?.includes('authentication failed') || error.message?.includes('bad auth')) {
+      errorDetails.hint = 'Check username and password in connection string';
+    } else if (error.message?.includes('ENOTFOUND') || error.message?.includes('getaddrinfo')) {
+      errorDetails.hint = 'Check cluster hostname in connection string';
+    } else if (error.message?.includes('timeout') || error.message?.includes('ECONNREFUSED')) {
+      errorDetails.hint = 'Check Network Access settings in MongoDB Atlas - ensure IP whitelist includes 0.0.0.0/0 or Vercel IPs';
+    } else if (error.message?.includes('SSL') || error.message?.includes('TLS')) {
+      errorDetails.hint = 'SSL/TLS connection issue - check MongoDB Atlas network settings';
+    }
+    
+    if (process.env.NODE_ENV === 'development') {
+      errorDetails.stack = error.stack;
+    }
+    
+    return res.status(500).json(errorDetails);
   }
 }
 
