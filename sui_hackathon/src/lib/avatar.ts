@@ -8,10 +8,11 @@ import { getUserProfile } from "./user-profile";
 
 /**
  * Get avatar URL for an address
- * Returns Walrus URL if available, otherwise returns a fallback avatar
+ * Returns base64 data URL from MongoDB if available, otherwise returns a fallback avatar
  */
 export function getAvatarUrl(address: string, profile?: { avatarUrl?: string } | null): string {
   if (profile?.avatarUrl) {
+    // Check if it's a data URL (starts with data:) or a regular URL
     return profile.avatarUrl;
   }
   // Fallback to a deterministic avatar based on address

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Box, Flex, Text, Button, Dialog, Spinner } from "@radix-ui/themes";
 import { UserProfile } from "../lib/user-profile";
-import { uploadImageToWalrus, validateImageFile, createImagePreview } from "../lib/walrus";
+import { validateImageFile, createImagePreview } from "../lib/walrus";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 
 interface EditProfileModalProps {
@@ -33,18 +33,13 @@ export function EditProfileModal({ profile, onClose, onSave }: EditProfileModalP
 
     setIsUploadingAvatar(true);
     try {
-      // Create preview
-      const preview = await createImagePreview(file);
-      setAvatarPreview(preview);
-
-      // Upload to Walrus
-      if (account?.address) {
-        const url = await uploadImageToWalrus(file, account.address);
-        setAvatarUrl(url);
-      }
+      // Create data URL (base64) for storage in MongoDB
+      const dataUrl = await createImagePreview(file);
+      setAvatarPreview(dataUrl);
+      setAvatarUrl(dataUrl); // Store as base64 data URL in MongoDB
     } catch (error) {
-      console.error("Error uploading avatar:", error);
-      alert("Failed to upload avatar. Please try again.");
+      console.error("Error processing avatar:", error);
+      alert("Failed to process avatar. Please try again.");
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -59,18 +54,13 @@ export function EditProfileModal({ profile, onClose, onSave }: EditProfileModalP
 
     setIsUploadingBanner(true);
     try {
-      // Create preview
-      const preview = await createImagePreview(file);
-      setBannerPreview(preview);
-
-      // Upload to Walrus
-      if (account?.address) {
-        const url = await uploadImageToWalrus(file, account.address);
-        setBannerUrl(url);
-      }
+      // Create data URL (base64) for storage in MongoDB
+      const dataUrl = await createImagePreview(file);
+      setBannerPreview(dataUrl);
+      setBannerUrl(dataUrl); // Store as base64 data URL in MongoDB
     } catch (error) {
-      console.error("Error uploading banner:", error);
-      alert("Failed to upload banner. Please try again.");
+      console.error("Error processing banner:", error);
+      alert("Failed to process banner. Please try again.");
     } finally {
       setIsUploadingBanner(false);
     }

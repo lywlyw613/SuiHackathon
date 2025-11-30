@@ -58,8 +58,8 @@ async function connectToDatabase() {
 export interface UserProfile {
   address: string; // Wallet address (primary key)
   name?: string; // Name from zkLogin (e.g., "Chung-Yang Ric Huang")
-  avatarUrl?: string; // Walrus URL for avatar
-  bannerUrl?: string; // Walrus URL for banner/background
+  avatarUrl?: string; // Base64 data URL for avatar (stored in MongoDB)
+  bannerUrl?: string; // Base64 data URL for banner/background (stored in MongoDB)
   bio?: string; // Brief description
   chatroomCount?: number; // Number of chatrooms owned
   friends?: string[]; // Array of friend wallet addresses
