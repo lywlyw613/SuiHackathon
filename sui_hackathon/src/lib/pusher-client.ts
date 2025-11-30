@@ -31,12 +31,20 @@ if (typeof window !== 'undefined' && PUSHER_KEY) {
     // Code 1006 is a normal connection close, will auto-retry
     // Code 1000 is a normal closure
     const errorCode = err?.error?.data?.code || err?.code;
-    if (errorCode !== 1006 && errorCode !== 1000) {
-      console.warn('[Pusher] Connection error:', {
-        type: err?.type,
+    const errorType = err?.type || 'Unknown';
+    const errorMessage = err?.error?.data?.message || err?.message || 'No error message';
+    
+    // Filter out common non-critical errors
+    if (errorCode !== 1006 && errorCode !== 1000 && errorCode !== undefined) {
+      console.warn('[Pusher] ⚠️ Connection error:', {
+        type: errorType,
         code: errorCode,
-        message: err?.error?.data?.message || err?.message,
+        message: errorMessage,
       });
+    } else if (errorCode === undefined && errorType === 'PusherError') {
+      // This might be a client event error - check if it's about client events
+      // Don't log as error if it's just about client events not being enabled
+      console.warn('[Pusher] ⚠️ Client event may not be enabled in Pusher Dashboard');
     }
   });
   
