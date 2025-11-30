@@ -35,17 +35,16 @@ if (typeof window !== 'undefined' && PUSHER_KEY) {
     const errorMessage = err?.error?.data?.message || err?.message || 'No error message';
     
     // Filter out common non-critical errors
-    if (errorCode !== 1006 && errorCode !== 1000) {
-      // Only log if it's a real error (not undefined)
-      if (errorCode !== undefined) {
-        console.warn('[Pusher] ⚠️ Connection error:', {
-          type: errorType,
-          code: errorCode,
-          message: errorMessage,
-        });
-      }
-      // Don't log undefined errors as they're often false positives
+    // Don't log undefined errors or PusherError without specific code - these are often false positives
+    // Especially when client events are working (event trigger returns true)
+    if (errorCode !== 1006 && errorCode !== 1000 && errorCode !== undefined) {
+      console.warn('[Pusher] ⚠️ Connection error:', {
+        type: errorType,
+        code: errorCode,
+        message: errorMessage,
+      });
     }
+    // Silently ignore undefined errors - they're usually false positives when everything is working
   });
   
   // Log when connection is established

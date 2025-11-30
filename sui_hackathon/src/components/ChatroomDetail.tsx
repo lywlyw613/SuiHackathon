@@ -764,6 +764,7 @@ export function ChatroomDetail() {
                   
                   if (result === true) {
                     console.log('[Pusher] ✅ Event triggered successfully (normal tx):', eventData);
+                    // Event triggered successfully - client events are working!
                   } else {
                     console.warn('[Pusher] ⚠️ Event trigger returned:', result, '- may need to enable client events in Pusher Dashboard');
                   }
