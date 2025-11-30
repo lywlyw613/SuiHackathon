@@ -480,8 +480,11 @@ export function ChatroomDetail() {
       console.warn('[Pusher] ⚠️ Pusher client not available, using polling only');
     }
 
-    // Set up polling to check for new messages every 3 seconds
+    // Set up polling to check for new messages every 2.5 seconds
+    // This ensures updates even if Pusher fails
     if (!chatroomId) return; // Ensure chatroomId is defined
+    
+    console.log('[Polling] Starting polling for chatroom:', chatroomId);
     
     pollingIntervalRef.current = setInterval(async () => {
       if (!chatroomId) return; // Double check in callback
@@ -507,15 +510,26 @@ export function ChatroomDetail() {
 
           // If last_chat_id has changed, trigger refetch
           if (currentLastChatId !== lastCheckedChatIdRef.current && currentLastChatId !== null) {
-            console.log('New message detected, updating...');
+            console.log('[Polling] 🔄 Detected new message, refetching chats...');
+            console.log('[Polling] Previous last_chat_id:', lastCheckedChatIdRef.current);
+            console.log('[Polling] New last_chat_id:', currentLastChatId);
             setPreviousChatId(currentLastChatId);
             lastCheckedChatIdRef.current = currentLastChatId;
           }
         }
       } catch (error) {
-        console.error('Error polling for new messages:', error);
+        console.error("[Polling] ❌ Error polling for new messages:", error);
       }
-    }, 3000); // Poll every 3 seconds
+    }, 2500); // Poll every 2.5 seconds for faster updates
+    
+    // Cleanup polling on unmount
+    return () => {
+      if (pollingIntervalRef.current) {
+        console.log('[Polling] 🧹 Cleaning up polling interval');
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
 
     // Cleanup polling on unmount
     return () => {
