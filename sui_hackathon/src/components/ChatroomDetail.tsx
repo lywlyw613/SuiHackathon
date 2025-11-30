@@ -691,20 +691,23 @@ export function ChatroomDetail() {
             console.log("Message sent:", result);
             setMessage("");
             // Trigger Pusher event to notify other clients (if Pusher is available)
-            if (pusherChannelRef.current && pusherChannelRef.current.subscribed) {
-              // Use client events for real-time updates (must start with 'client-')
+            if (pusherChannelRef.current) {
               try {
-                pusherChannelRef.current.trigger('client-new-message', {
-                  chatroomId,
-                  timestamp: Date.now(),
-                });
-                console.log('Pusher event triggered (normal tx)');
-              } catch (error) {
-                console.error('Error triggering Pusher event:', error);
-                // Client events might not be enabled, fall back to polling
+                // Check if channel is subscribed before triggering
+                if (pusherChannelRef.current.subscribed) {
+                  pusherChannelRef.current.trigger('client-new-message', {
+                    chatroomId,
+                    timestamp: Date.now(),
+                  });
+                  console.log('Pusher event triggered (normal tx)');
+                } else {
+                  console.warn('Pusher channel not subscribed yet, will rely on polling');
+                }
+              } catch (error: any) {
+                // Client events might not be enabled in Pusher app settings
+                // This is okay, we'll rely on polling
+                console.warn('Could not trigger Pusher client event (may need to enable in Pusher dashboard):', error?.message || error);
               }
-            } else {
-              console.warn('Pusher channel not ready for normal tx');
             }
             // Refresh chats after sending - polling will pick up the new message
             // No need to reload the page anymore
