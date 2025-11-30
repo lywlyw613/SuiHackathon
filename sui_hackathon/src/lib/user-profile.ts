@@ -137,6 +137,8 @@ export async function getFriends(address: string): Promise<Array<{ address: stri
  */
 export async function addFriend(address: string, friendAddress: string): Promise<boolean> {
   try {
+    console.log('Adding friend:', { address, friendAddress, API_BASE_URL });
+    
     const response = await fetch(`${API_BASE_URL}/api/friends`, {
       method: 'POST',
       headers: {
@@ -145,19 +147,29 @@ export async function addFriend(address: string, friendAddress: string): Promise
       body: JSON.stringify({ address, friendAddress }),
     });
 
+    console.log('Add friend response status:', response.status);
+
     if (!response.ok) {
-      const errorText = await response.text();
       let errorMessage = 'Failed to add friend';
       try {
-        const errorData = JSON.parse(errorText);
-        errorMessage = errorData.error || errorData.message || errorMessage;
-      } catch {
-        errorMessage = errorText || errorMessage;
+        const errorText = await response.text();
+        console.error('Add friend error response:', errorText);
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+      } catch (parseError) {
+        console.error('Error parsing error response:', parseError);
+        errorMessage = `Server error (${response.status}). Please check Vercel logs.`;
       }
       throw new Error(errorMessage);
     }
 
     const data = await response.json();
+    console.log('Add friend success response:', data);
+    
     if (data.success === true) {
       return true;
     } else {
