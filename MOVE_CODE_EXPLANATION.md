@@ -414,12 +414,126 @@ public struct Chat has key, store {
 ### 为什么 `previous_chat_id` 是 `Option<ID>`？
 
 **`Option<T>` 的作用：**
-- `Option::none()` - 表示"没有值"
+- `Option::none()` - 表示"没有值"（null/None）
 - `Option::some(value)` - 表示"有值"
 
 **为什么需要 Option？**
-- **第一个消息**：没有前一个消息，所以是 `Option::none()`
-- **其他消息**：有前一个消息，所以是 `Option::some(previous_id)`
+
+#### 1. 第一个消息的特殊情况
+
+**第一个消息（系统消息）没有前一个消息：**
+
+```move
+// 在 create_chatroom 中创建第一个消息
+let first_chat = chat::create(
+    chatroom_id,
+    creator,
+    option::none(), // ← 第一个消息，没有前一个！
+    SYSTEM_MESSAGE,
+    clock,
+    ctx,
+);
+```
+
+- 第一个消息是聊天历史的**起点**
+- 它没有前一个消息，所以 `previous_chat_id` 必须是 `none()`
+- 如果不使用 `Option`，无法表示"没有前一个消息"的情况
+
+#### 2. 其他消息有前一个消息
+
+**后续消息都有前一个消息：**
+
+```move
+// 在 send_message 中创建新消息
+let new_chat = chat::create(
+    chatroom_id,
+    sender,
+    previous_chat_id, // ← Option::some(last_chat_id)
+    encrypted_content,
+    clock,
+    ctx,
+);
+```
+
+- 每个新消息都指向前一个消息的 ID
+- `previous_chat_id` 是 `Option::some(last_chat_id)`
+
+#### 3. 如果不使用 Option 会怎样？
+
+**方案 A：使用特殊值（如 `@0x0`）表示"没有前一个"**
+```move
+// ❌ 不好的设计
+previous_chat_id: ID, // 如果是 @0x0 表示没有前一个
+```
+**问题：**
+- ❌ 类型不安全：无法在编译时区分"没有值"和"有效 ID"
+- ❌ 容易出错：如果 `@0x0` 恰好是一个有效的 Chat ID 怎么办？
+- ❌ 需要运行时检查：每次使用都要判断是否是特殊值
+
+**方案 B：使用 `Option<ID>`（✅ 我们的选择）**
+```move
+// ✅ 好的设计
+previous_chat_id: option::Option<ID>,
+```
+**优势：**
+- ✅ **类型安全**：编译器强制处理 `none` 和 `some` 两种情况
+- ✅ **明确语义**：`none()` 明确表示"没有值"，`some(id)` 明确表示"有值"
+- ✅ **避免错误**：无法意外使用 `none` 作为有效 ID
+- ✅ **Move 标准做法**：Move 语言推荐使用 `Option` 处理可选值
+
+#### 4. 在代码中如何使用 Option？
+
+**检查是否有前一个消息：**
+```move
+// 在 send_message 中验证 previous_chat_id
+let current_last_chat_id = chatroom::last_chat_id(chatroom);
+let matches = if (option::is_some(&current_last_chat_id) && option::is_some(&previous_chat_id)) {
+    // 两者都有值，比较它们
+    let current_id = *option::borrow(&current_last_chat_id);
+    let prev_id = *option::borrow(&previous_chat_id);
+    current_id == prev_id
+} else {
+    // 两者都是 none，也认为匹配（初始状态）
+    option::is_none(&current_last_chat_id) && option::is_none(&previous_chat_id)
+};
+```
+
+**前端遍历聊天历史：**
+```typescript
+let currentChatId = chatroom.last_chat_id; // Option::some(id) 或 null
+
+while (currentChatId !== null) { // Option::none() 时是 null
+  const chat = await client.getObject({ id: currentChatId });
+  
+  // 处理消息...
+  
+  // 移动到前一个消息
+  currentChatId = chat.previous_chat_id; // Option::none() 时是 null，循环结束
+}
+```
+
+#### 5. Option 的类型安全示例
+
+**Move 编译器会强制你处理两种情况：**
+
+```move
+// ✅ 正确：必须处理 Option
+let prev_id = if (option::is_some(&chat.previous_chat_id)) {
+    *option::borrow(&chat.previous_chat_id) // 安全地获取值
+} else {
+    // 处理 none 的情况
+    // 无法继续，因为没有前一个消息
+};
+
+// ❌ 错误：无法直接使用 Option 作为 ID
+// let prev_id: ID = chat.previous_chat_id; // 编译错误！
+```
+
+**总结：**
+- `Option<ID>` 是 Move 语言中表示"可能有值，也可能没有值"的标准方式
+- 第一个消息需要 `none()` 来表示"没有前一个消息"
+- 其他消息需要 `some(id)` 来表示"有前一个消息"
+- 类型安全，避免使用特殊值或空指针的错误
 
 **链表结构示例：**
 
