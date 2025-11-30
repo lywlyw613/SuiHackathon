@@ -378,17 +378,20 @@ export function ChatroomDetail() {
             console.log(`[Pusher] 📨 New message event received for ${channelName}:`, data);
             console.log(`[Pusher] Event data:`, JSON.stringify(data, null, 2));
             
-            // Immediately trigger refetch by updating previousChatId
-            // This will cause the useEffect to refetch all chats
+            // Trigger refetch with retry mechanism to handle chain confirmation delay
             if (chatroomId) {
               console.log(`[Pusher] 🔄 Triggering chat refresh for chatroom: ${chatroomId}`);
               
-              // Small delay to ensure transaction is processed on-chain
-              setTimeout(() => {
-                client.getObject({
-                  id: chatroomId,
-                  options: { showContent: true },
-                }).then((chatroom) => {
+              const fetchWithRetry = async (retries = 0, maxRetries = 5) => {
+                try {
+                  // Wait a bit for transaction to be confirmed on-chain
+                  await new Promise(resolve => setTimeout(resolve, 2000));
+                  
+                  const chatroom = await client.getObject({
+                    id: chatroomId,
+                    options: { showContent: true },
+                  });
+                  
                   if (chatroom.data?.content && "fields" in chatroom.data.content) {
                     const fields = chatroom.data.content.fields as {
                       last_chat_id: { fields?: { id: string } } | string | null;
@@ -401,13 +404,28 @@ export function ChatroomDetail() {
                     } else if (fields.last_chat_id && typeof fields.last_chat_id === "object" && "fields" in fields.last_chat_id) {
                       parsedLastChatId = fields.last_chat_id.fields?.id || null;
                     }
-                    console.log(`[Pusher] 🔄 Updating previousChatId to: ${parsedLastChatId}`);
-                    setPreviousChatId(parsedLastChatId);
+                    
+                    // Check if last_chat_id has actually changed
+                    if (parsedLastChatId && parsedLastChatId !== lastCheckedChatIdRef.current) {
+                      console.log(`[Pusher] 🔄 Updating previousChatId to: ${parsedLastChatId}`);
+                      setPreviousChatId(parsedLastChatId);
+                    } else if (retries < maxRetries) {
+                      // If no change, retry after a delay
+                      console.log(`[Pusher] ⏳ No change detected, retrying... (${retries + 1}/${maxRetries})`);
+                      setTimeout(() => fetchWithRetry(retries + 1, maxRetries), 1000);
+                    } else {
+                      console.warn('[Pusher] ⚠️ Max retries reached, transaction may not be confirmed yet');
+                    }
                   }
-                }).catch((err) => {
+                } catch (err) {
                   console.error('[Pusher] ❌ Error refetching chatroom after event:', err);
-                });
-              }, 1500); // Wait 1.5 seconds for transaction to be processed
+                  if (retries < maxRetries) {
+                    setTimeout(() => fetchWithRetry(retries + 1, maxRetries), 1000);
+                  }
+                }
+              };
+              
+              fetchWithRetry();
             }
           };
           
