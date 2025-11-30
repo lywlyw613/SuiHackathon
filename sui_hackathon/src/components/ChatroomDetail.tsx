@@ -10,6 +10,10 @@ import { formatDistanceToNow } from "date-fns";
 import { pusherClient } from "../lib/pusher-client";
 import { isSponsoredTransactionsEnabled, getSponsorApiUrl } from "../lib/sponsored-transactions";
 import { Box, Flex, Text, Button, TextField, Card, Switch } from "@radix-ui/themes";
+import { getAvatarUrl } from "../lib/avatar";
+import { getUserProfile } from "../lib/user-profile";
+import { useMembersFromChats } from "../hooks/useChatroomMembers";
+import { ChatroomInfoModal } from "./ChatroomInfoModal";
 
 export function ChatroomDetail() {
   const { chatroomId } = useParams<{ chatroomId: string }>();
@@ -27,6 +31,9 @@ export function ChatroomDetail() {
   const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastCheckedChatIdRef = useRef<string | null>(null);
   const pusherChannelRef = useRef<any>(null); // Store Pusher channel reference
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [senderAvatars, setSenderAvatars] = useState<Record<string, string>>({});
+  const members = useMembersFromChats(chats);
 
   // Fetch user's Key for this chatroom
   const { data: ownedObjects } = useSuiClientQuery(
@@ -44,6 +51,29 @@ export function ChatroomDetail() {
       enabled: !!account && !!chatroomId,
     }
   );
+
+  // Load avatars for all senders
+  useEffect(() => {
+    const loadAvatars = async () => {
+      const avatarMap: Record<string, string> = {};
+      const uniqueSenders = new Set(chats.map(chat => chat.sender));
+      
+      for (const sender of uniqueSenders) {
+        try {
+          const profile = await getUserProfile(sender);
+          avatarMap[sender] = getAvatarUrl(sender, profile);
+        } catch (error) {
+          avatarMap[sender] = getAvatarUrl(sender);
+        }
+      }
+      
+      setSenderAvatars(avatarMap);
+    };
+
+    if (chats.length > 0) {
+      loadAvatars();
+    }
+  }, [chats]);
 
   // Find the key for this chatroom
   useEffect(() => {
@@ -657,75 +687,162 @@ export function ChatroomDetail() {
   };
 
   return (
-    <Flex direction="column" style={{ height: "100vh", background: "var(--gray-2)" }}>
+    <Flex direction="column" style={{ height: "100vh", background: "var(--x-black)" }}>
       {/* Header */}
       <Box
         style={{
-          background: "var(--gray-3)",
-          borderBottom: "1px solid var(--gray-6)",
-          padding: "var(--space-4)",
+          background: "var(--x-black)",
+          borderBottom: "1px solid var(--x-border)",
+          padding: "var(--x-spacing-md)",
+          position: "sticky",
+          top: 0,
+          zIndex: 10,
         }}
       >
         <Flex align="center" gap="4">
-          <Button variant="ghost" onClick={() => navigate("/home")}>
+          <Button 
+            variant="ghost" 
+            onClick={() => navigate("/home")}
+            style={{ color: "var(--x-white)" }}
+          >
             ← Back
           </Button>
-          <Text size="4" weight="medium">
+          <Text 
+            size="4" 
+            weight="medium" 
+            style={{ 
+              color: "var(--x-white)",
+              cursor: "pointer",
+              flex: 1,
+            }}
+            onClick={() => setShowInfoModal(true)}
+          >
             Chatroom {formatAddress(chatroomId || "")}
           </Text>
+          <Button
+            variant="ghost"
+            size="1"
+            onClick={() => setShowInfoModal(true)}
+            style={{ color: "var(--x-text-secondary)" }}
+          >
+            ℹ️
+          </Button>
         </Flex>
       </Box>
 
       {/* Messages */}
-      <Box style={{ flex: 1, overflowY: "auto", padding: "var(--space-4)" }}>
+      <Box style={{ flex: 1, overflowY: "auto", padding: "var(--x-spacing-md)" }}>
         {chats.length === 0 ? (
-          <Box style={{ textAlign: "center", padding: "var(--space-8)" }}>
-            <Text size="4" color="gray">
+          <Box style={{ textAlign: "center", padding: "var(--x-spacing-xl)" }}>
+            <Text size="4" style={{ color: "var(--x-text-secondary)" }}>
               No messages yet. Start the conversation!
             </Text>
           </Box>
         ) : (
-          <Flex direction="column" gap="4">
-            {chats.map((chat) => (
-              <Flex
-                key={chat.objectId}
-                direction="column"
-                gap="1"
-                align={chat.sender === account?.address ? "end" : "start"}
-                style={{ maxWidth: "70%" }}
-              >
+          <Flex direction="column" gap="3">
+            {chats.map((chat) => {
+              const isOwnMessage = chat.sender === account?.address;
+              const avatarUrl = senderAvatars[chat.sender] || getAvatarUrl(chat.sender);
+              
+              return (
                 <Flex
-                  align="center"
-                  gap="2"
+                  key={chat.objectId}
+                  gap="3"
+                  align="start"
                   style={{
-                    alignSelf: chat.sender === account?.address ? "flex-end" : "flex-start",
+                    flexDirection: isOwnMessage ? "row-reverse" : "row",
+                    maxWidth: "75%",
+                    alignSelf: isOwnMessage ? "flex-end" : "flex-start",
                   }}
                 >
-                  {chat.sender !== account?.address && (
-                    <Text size="1" color="gray" weight="medium">
-                      {formatAddress(chat.sender)}
-                    </Text>
-                  )}
-                  <Text size="1" color="gray">
-                    {chat.timestamp ? formatDistanceToNow(new Date(chat.timestamp), {
-                      addSuffix: true,
-                    }) : "Unknown"}
-                  </Text>
+                  {/* Avatar */}
+                  <img
+                    src={avatarUrl}
+                    alt={formatAddress(chat.sender)}
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: "50%",
+                      objectFit: "cover",
+                      border: "2px solid var(--x-border)",
+                      flexShrink: 0,
+                    }}
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = "none";
+                      const parent = target.parentElement;
+                      if (parent) {
+                        const fallback = document.createElement("div");
+                        fallback.style.cssText = `
+                          width: 40px;
+                          height: 40px;
+                          border-radius: 50%;
+                          background: var(--blue-9);
+                          display: flex;
+                          align-items: center;
+                          justify-content: center;
+                          color: white;
+                          font-weight: bold;
+                          font-size: 14px;
+                          flex-shrink: 0;
+                        `;
+                        fallback.textContent = formatAddress(chat.sender).slice(0, 2).toUpperCase();
+                        parent.insertBefore(fallback, target);
+                      }
+                    }}
+                  />
+                  
+                  {/* Message Content */}
+                  <Flex direction="column" gap="1" style={{ flex: 1 }}>
+                    <Flex
+                      align="center"
+                      gap="2"
+                      style={{
+                        flexDirection: isOwnMessage ? "row-reverse" : "row",
+                      }}
+                    >
+                      {!isOwnMessage && (
+                        <Text 
+                          size="2" 
+                          weight="medium" 
+                          style={{ color: "var(--x-white)" }}
+                        >
+                          {formatAddress(chat.sender)}
+                        </Text>
+                      )}
+                      <Text 
+                        size="1" 
+                        style={{ color: "var(--x-text-secondary)" }}
+                      >
+                        {chat.timestamp ? formatDistanceToNow(new Date(chat.timestamp), {
+                          addSuffix: true,
+                        }) : "Unknown"}
+                      </Text>
+                    </Flex>
+                    <Card
+                      style={{
+                        background: isOwnMessage
+                          ? "var(--blue-9)"
+                          : "var(--x-gray-800)",
+                        border: "1px solid var(--x-border)",
+                        padding: "var(--x-spacing-md)",
+                        borderRadius: "var(--x-radius-lg)",
+                      }}
+                    >
+                      <Text 
+                        size="3" 
+                        style={{ 
+                          color: isOwnMessage ? "white" : "var(--x-white)",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {chat.decryptedContent || "..."}
+                      </Text>
+                    </Card>
+                  </Flex>
                 </Flex>
-                <Card
-                  style={{
-                    background:
-                      chat.sender === account?.address
-                        ? "var(--blue-9)"
-                        : "var(--gray-4)",
-                  }}
-                >
-                  <Text size="3" style={{ color: chat.sender === account?.address ? "white" : "inherit" }}>
-                    {chat.decryptedContent || "..."}
-                  </Text>
-                </Card>
-              </Flex>
-            ))}
+              );
+            })}
           </Flex>
         )}
       </Box>
@@ -733,9 +850,11 @@ export function ChatroomDetail() {
       {/* Input */}
       <Box
         style={{
-          background: "var(--gray-3)",
-          borderTop: "1px solid var(--gray-6)",
-          padding: "var(--space-4)",
+          background: "var(--x-black)",
+          borderTop: "1px solid var(--x-border)",
+          padding: "var(--x-spacing-md)",
+          position: "sticky",
+          bottom: 0,
         }}
       >
         <Flex direction="column" gap="2">
@@ -746,7 +865,15 @@ export function ChatroomDetail() {
                 onCheckedChange={setUseSponsoredTx}
                 id="sponsored-tx"
               />
-              <Text size="2" as="label" htmlFor="sponsored-tx" style={{ cursor: "pointer" }}>
+              <Text 
+                size="2" 
+                as="label" 
+                htmlFor="sponsored-tx" 
+                style={{ 
+                  cursor: "pointer",
+                  color: "var(--x-text-secondary)",
+                }}
+              >
                 Use sponsored transactions (no gas fee, but requires backend)
               </Text>
             </Flex>
@@ -755,17 +882,36 @@ export function ChatroomDetail() {
             <TextField.Root
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
               placeholder="Type a message..."
               disabled={isSending}
-              style={{ flex: 1 }}
+              style={{ 
+                flex: 1,
+                background: "var(--x-gray-800)",
+                border: "1px solid var(--x-border)",
+                color: "var(--x-white)",
+              }}
             />
-            <Button onClick={handleSend} disabled={!message.trim() || isSending} size="3">
+            <Button 
+              onClick={handleSend} 
+              disabled={!message.trim() || isSending} 
+              size="3"
+              className="x-button-primary"
+            >
               {isSending ? "Sending..." : "Send"}
             </Button>
           </Flex>
         </Flex>
       </Box>
+
+      {/* Chatroom Info Modal */}
+      {chatroomId && (
+        <ChatroomInfoModal
+          chatroomId={chatroomId}
+          isOpen={showInfoModal}
+          onClose={() => setShowInfoModal(false)}
+        />
+      )}
     </Flex>
   );
 }
