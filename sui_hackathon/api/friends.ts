@@ -112,10 +112,11 @@ export default async function handler(req: any, res: any) {
           return res.status(400).json({ error: 'Cannot add yourself as a friend' });
         }
 
-        // Check if friend already exists
-        const profile = await profilesCollection.findOne({ address });
+        // Check if profile exists
+        let profile = await profilesCollection.findOne({ address });
         console.log('Current profile:', profile ? { address: profile.address, friendsCount: profile.friends?.length || 0 } : 'not found');
         
+        // Check if friend already exists
         if (profile?.friends?.includes(friendAddress)) {
           return res.status(200).json({
             success: true,
@@ -124,38 +125,59 @@ export default async function handler(req: any, res: any) {
           });
         }
 
+        // If profile doesn't exist, create it first
+        if (!profile) {
+          const insertResult = await profilesCollection.insertOne({
+            address,
+            name: '',
+            bio: '',
+            avatarUrl: '',
+            bannerUrl: '',
+            friends: [friendAddress],
+            chatroomCount: 0,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+          console.log('Created new profile:', insertResult.insertedId);
+          
+          return res.status(200).json({
+            success: true,
+            added: true,
+            message: "Friend added successfully",
+          });
+        }
+
+        // Profile exists, update it
         const result = await profilesCollection.updateOne(
           { address },
           {
             $addToSet: { friends: friendAddress },
-            $setOnInsert: { 
-              address,
-              createdAt: new Date(),
-              friends: [],
-              chatroomCount: 0,
-            },
             $set: {
               updatedAt: new Date(),
             },
-          },
-          { upsert: true }
+          }
         );
 
         console.log('Update result:', {
           matchedCount: result.matchedCount,
           modifiedCount: result.modifiedCount,
-          upsertedCount: result.upsertedCount,
         });
 
-        const wasAdded = result.modifiedCount > 0 || result.upsertedCount > 0;
+        if (result.matchedCount === 0) {
+          return res.status(404).json({
+            error: 'Profile not found',
+            message: 'Profile was not found after creation attempt',
+          });
+        }
         
         return res.status(200).json({
           success: true,
-          added: wasAdded,
-          message: wasAdded ? "Friend added successfully" : "Friend already exists",
+          added: result.modifiedCount > 0,
+          message: result.modifiedCount > 0 ? "Friend added successfully" : "Friend already exists",
         });
       } catch (postError: any) {
         console.error('Error in POST /api/friends:', postError);
+        console.error('Error stack:', postError.stack);
         throw postError; // Re-throw to be caught by outer catch
       }
     }
