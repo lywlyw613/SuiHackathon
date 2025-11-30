@@ -3,7 +3,7 @@ import { useSuiClientQuery, useCurrentAccount } from "@mysten/dapp-kit";
 import { PACKAGE_ID, MODULE_NAMES } from "../lib/constants";
 import { formatAddress } from "../lib/utils";
 import { KeyObject } from "../types";
-import { getUserProfile, getFriends, saveUserProfile, UserProfile } from "../lib/user-profile";
+import { getUserProfile, getFriends, addFriend, saveUserProfile, UserProfile } from "../lib/user-profile";
 import { Box, Container, Flex, Heading, Text, Card, Button, Spinner } from "@radix-ui/themes";
 import { useState, useEffect } from "react";
 import { EditProfileModal } from "./EditProfileModal";
@@ -22,6 +22,8 @@ export function ProfilePage() {
   const [isFriendsModalOpen, setIsFriendsModalOpen] = useState(false);
   const [friends, setFriends] = useState<any[]>([]);
   const [friendsCount, setFriendsCount] = useState(0);
+  const [isAddingFriend, setIsAddingFriend] = useState(false);
+  const [isFriend, setIsFriend] = useState(false);
 
   // Fetch user profile from MongoDB
   useEffect(() => {
@@ -186,19 +188,28 @@ export function ProfilePage() {
         }}
       >
         <Container size="4" py="3" px="4">
-          <Flex align="center" gap="4">
-            <Button
-              variant="ghost"
-              onClick={() => navigate("/home")}
-              style={{ color: "var(--x-white)", padding: "var(--x-spacing-sm)" }}
-            >
-              ←
-            </Button>
-            <Box>
-              <Text size="4" weight="bold" style={{ color: "var(--x-white)" }}>
-                {displayName}
-              </Text>
-            </Box>
+          <Flex align="center" justify="between" gap="4">
+            <Flex align="center" gap="4">
+              <Button
+                variant="ghost"
+                onClick={() => navigate("/home")}
+                style={{ color: "var(--x-white)", padding: "var(--x-spacing-sm)" }}
+              >
+                ←
+              </Button>
+              <Box>
+                <Text size="4" weight="bold" style={{ color: "var(--x-white)" }}>
+                  {displayName}
+                </Text>
+              </Box>
+            </Flex>
+            {currentAccount?.address && (
+              <Box>
+                <Text size="2" style={{ color: "var(--x-text-secondary)" }}>
+                  Logged in as: {formatAddress(currentAccount.address)}
+                </Text>
+              </Box>
+            )}
           </Flex>
         </Container>
       </Box>
@@ -228,8 +239,8 @@ export function ProfilePage() {
             />
           )}
 
-          {/* Edit Profile Button (only for own profile) */}
-          {isOwnProfile && (
+          {/* Edit Profile Button (only for own profile) or Add Friend Button (for others) */}
+          {isOwnProfile ? (
             <Box
               style={{
                 position: "absolute",
@@ -251,6 +262,41 @@ export function ProfilePage() {
                 }}
               >
                 Edit Profile
+              </Button>
+            </Box>
+          ) : currentAccount?.address && (
+            <Box
+              style={{
+                position: "absolute",
+                bottom: "var(--x-spacing-md)",
+                right: "var(--x-spacing-md)",
+                zIndex: 20,
+              }}
+            >
+              <Button
+                onClick={async () => {
+                  if (!currentAccount?.address || !address) return;
+                  setIsAddingFriend(true);
+                  try {
+                    await addFriend(currentAccount.address, address);
+                    setIsFriend(true);
+                    alert("Friend added successfully!");
+                  } catch (error) {
+                    console.error("Error adding friend:", error);
+                    alert("Failed to add friend. Please try again.");
+                  } finally {
+                    setIsAddingFriend(false);
+                  }
+                }}
+                className="x-button-primary"
+                disabled={isFriend || isAddingFriend}
+                style={{ 
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  pointerEvents: "auto",
+                }}
+              >
+                {isFriend ? "✓ Friend" : isAddingFriend ? "Adding..." : "Add Friend"}
               </Button>
             </Box>
           )}
