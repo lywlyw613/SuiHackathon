@@ -66,6 +66,8 @@ export default async function handler(req: any, res: any) {
   try {
     const { db } = await connectToDatabase();
     const profilesCollection = db.collection('profiles');
+    
+    console.log('Friends API request:', { method: req.method, body: req.body, query: req.query });
 
     // GET - Get friends list for a user
     if (req.method === 'GET') {
