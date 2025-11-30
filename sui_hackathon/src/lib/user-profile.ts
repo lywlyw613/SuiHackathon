@@ -158,7 +158,11 @@ export async function addFriend(address: string, friendAddress: string): Promise
     }
 
     const data = await response.json();
-    return data.success === true;
+    if (data.success === true) {
+      return true;
+    } else {
+      throw new Error(data.message || 'Failed to add friend');
+    }
   } catch (error) {
     console.error('Error adding friend:', error);
     throw error; // Re-throw to let caller handle

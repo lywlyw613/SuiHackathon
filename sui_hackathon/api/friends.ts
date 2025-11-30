@@ -106,18 +106,36 @@ export default async function handler(req: any, res: any) {
         return res.status(400).json({ error: 'Cannot add yourself as a friend' });
       }
 
+      // Check if friend already exists
+      const profile = await profilesCollection.findOne({ address });
+      if (profile?.friends?.includes(friendAddress)) {
+        return res.status(200).json({
+          success: true,
+          added: false,
+          message: "Friend already added",
+        });
+      }
+
       const result = await profilesCollection.updateOne(
         { address },
         {
           $addToSet: { friends: friendAddress },
-          $setOnInsert: { createdAt: new Date() },
+          $setOnInsert: { 
+            address,
+            createdAt: new Date(),
+            friends: [],
+            chatroomCount: 0,
+          },
         },
         { upsert: true }
       );
 
+      const wasAdded = result.modifiedCount > 0 || result.upsertedCount > 0;
+      
       return res.status(200).json({
         success: true,
-        added: result.modifiedCount > 0 || result.upsertedCount > 0,
+        added: wasAdded,
+        message: wasAdded ? "Friend added successfully" : "Friend already exists",
       });
     }
 
