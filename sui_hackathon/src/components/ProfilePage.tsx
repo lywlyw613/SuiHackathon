@@ -8,6 +8,7 @@ import { Box, Container, Flex, Heading, Text, Card, Button, Spinner } from "@rad
 import { useState, useEffect } from "react";
 import { EditProfileModal } from "./EditProfileModal";
 import { FriendsListModal } from "./FriendsListModal";
+import { getAllChatroomNames } from "../lib/chatroom-names";
 
 export function ProfilePage() {
   const { address } = useParams<{ address: string }>();
@@ -24,6 +25,7 @@ export function ProfilePage() {
   const [friendsCount, setFriendsCount] = useState(0);
   const [isAddingFriend, setIsAddingFriend] = useState(false);
   const [isFriend, setIsFriend] = useState(false);
+  const [chatroomNames, setChatroomNames] = useState<Record<string, string>>({});
 
   // Fetch user profile from MongoDB
   useEffect(() => {
@@ -139,6 +141,21 @@ export function ProfilePage() {
       setProfile({ ...profile, chatroomCount });
     }
   }, [chatroomCount]);
+
+  // Load chatroom names for current user (if logged in)
+  useEffect(() => {
+    if (currentAccount?.address && profileKeys.length > 0) {
+      getAllChatroomNames(currentAccount.address)
+        .then((names) => {
+          setChatroomNames(names);
+        })
+        .catch(() => {
+          // Silently fail - don't log errors for expected database connection issues
+        });
+    } else {
+      setChatroomNames({});
+    }
+  }, [currentAccount?.address, profileKeys.length]);
 
   const handleSaveProfile = async (updatedProfile: Partial<UserProfile>) => {
     // Security: ensure we're saving for the current account
@@ -409,6 +426,9 @@ export function ProfilePage() {
               <Flex direction="column" gap="2">
                 {profileKeys.map((key) => {
                   const isCommon = myChatroomIds.has(key.chatroomId);
+                  // Use custom name if available (for current user), otherwise use address
+                  const customName = chatroomNames[key.chatroomId];
+                  const displayName = customName || `Chatroom ${formatAddress(key.chatroomId)}`;
                   return (
                     <Card
                       key={key.objectId}
@@ -437,7 +457,7 @@ export function ProfilePage() {
                       <Flex align="center" justify="between">
                         <Box>
                           <Text size="3" weight="medium" style={{ display: "block", color: "var(--x-white)" }}>
-                            {formatAddress(key.chatroomId)}
+                            {displayName}
                           </Text>
                           {isCommon && (
                             <Text size="2" style={{ display: "block", marginTop: "var(--space-1)", color: "var(--x-blue)" }}>
