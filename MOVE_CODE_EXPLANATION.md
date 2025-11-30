@@ -359,18 +359,112 @@ public struct Chat has key, store {
 }
 ```
 
-**解释：**
-- `has key, store` - 对象可以被拥有和转移
-- `id: UID` - 对象 ID
-- `chatroom_id: ID` - 所属 chatroom 的 ID
-- `sender: address` - 发送者地址
-- `timestamp: u64` - 时间戳（毫秒）
-- `previous_chat_id: option::Option<ID>` - 前一个消息的 ID（用于构建链表）
-- `encrypted_content: vector<u8>` - 加密后的消息内容
+**字段详解：**
 
-**为什么 previous_chat_id 是 Option？**
-- 第一个消息没有前一个消息（`none`）
-- 其他消息有前一个消息（`some(id)`）
+1. **`id: UID`** - 对象的唯一标识符
+   - 每个 Chat 对象都有唯一的 ID
+   - 用于在链上查询和引用
+
+2. **`chatroom_id: ID`** - 所属 chatroom 的 ID
+   - 标识这个消息属于哪个 chatroom
+   - 用于过滤和查询特定 chatroom 的消息
+
+3. **`sender: address`** - 发送者的钱包地址
+   - 标识谁发送了这条消息
+   - 用于显示消息发送者
+
+4. **`timestamp: u64`** - 时间戳（毫秒）
+   - 消息发送的时间
+   - 使用 `clock::timestamp_ms(clock)` 获取
+
+5. **`previous_chat_id: option::Option<ID>`** - 前一个消息的 ID
+   - 用于构建**链表结构**（linked list）
+   - `Option::none()` - 第一个消息（没有前一个）
+   - `Option::some(id)` - 其他消息（指向前一个消息的 ID）
+
+6. **`encrypted_content: vector<u8>`** - 加密后的消息内容
+   - 使用 AES-256-GCM 加密
+   - 包含 IV（12 字节）+ 加密内容
+
+### 为什么使用 `has key, store` abilities？
+
+**`has key` ability：**
+- 使 Chat 成为 Sui 对象
+- 必须有 `id: UID` 字段
+- 对象可以被存储在链上
+
+**`has store` ability：**
+- 允许 Chat 对象被转移（transfer）
+- 在 `send_message` 中，Chat 对象被转移给发送者：
+  ```move
+  transfer::public_transfer(new_chat, sender);
+  ```
+
+**为什么 Chat 是 owned object（而不是 shared object）？**
+- ✅ 每个消息属于发送者（owned by sender）
+- ✅ 查询效率高：可以通过 `sui_getOwnedObjects` 查询用户发送的所有消息
+- ✅ 不需要版本控制（不像 shared object）
+- ✅ 符合"谁发送谁拥有"的语义
+
+**如果 Chat 是 shared object 会怎样？**
+- ❌ 无法确定消息的发送者（shared object 没有 owner）
+- ❌ 查询效率低，无法通过 `sui_getOwnedObjects` 查询
+- ❌ 增加不必要的复杂性
+
+### 为什么 `previous_chat_id` 是 `Option<ID>`？
+
+**`Option<T>` 的作用：**
+- `Option::none()` - 表示"没有值"
+- `Option::some(value)` - 表示"有值"
+
+**为什么需要 Option？**
+- **第一个消息**：没有前一个消息，所以是 `Option::none()`
+- **其他消息**：有前一个消息，所以是 `Option::some(previous_id)`
+
+**链表结构示例：**
+
+```
+Chatroom.last_chat_id → Chat3.id
+                         ↓
+                    previous_chat_id: some(Chat2.id)
+                         ↓
+                    Chat2.id
+                         ↓
+                    previous_chat_id: some(Chat1.id)
+                         ↓
+                    Chat1.id
+                         ↓
+                    previous_chat_id: none()  ← 第一个消息
+```
+
+**前端如何遍历聊天历史：**
+
+```typescript
+// 从 chatroom.last_chat_id 开始
+let currentChatId = chatroom.last_chat_id;
+
+while (currentChatId !== null) {
+  // 获取当前 Chat 对象
+  const chat = await client.getObject({
+    id: currentChatId,
+    options: { showContent: true }
+  });
+  
+  // 解密并显示消息
+  const decrypted = await decryptMessage(
+    chat.encrypted_content,
+    key
+  );
+  
+  // 移动到前一个消息
+  currentChatId = chat.previous_chat_id; // Option::none() 时是 null
+}
+```
+
+**为什么用链表而不是数组？**
+- ✅ **节省 gas**：不需要在 Chatroom 中存储所有消息 ID
+- ✅ **可扩展**：可以无限添加消息，不需要修改 Chatroom
+- ✅ **去中心化**：每个消息是独立的对象，可以独立查询
 
 ### create 函数
 
@@ -394,13 +488,162 @@ public fun create(
 }
 ```
 
-**解释：**
-- `clock::timestamp_ms(clock)` - 从 Clock 对象获取时间戳（毫秒）
-- 其他字段直接赋值
+**函数参数解释：**
 
-**为什么使用 Clock 而不是 tx_context？**
-- Clock 是共享对象，由验证者维护，时间戳更准确
-- `tx_context::epoch_timestamp_ms` 是交易的时间戳，可能不够精确
+1. **`chatroom_id: ID`** - 从 `sui_chat::send_message` 传入
+   - 标识消息属于哪个 chatroom
+
+2. **`sender: address`** - 从 `tx_context::sender(ctx)` 获取
+   - 自动获取交易发送者的地址
+   - 确保消息发送者不能被伪造
+
+3. **`previous_chat_id: option::Option<ID>`** - 从 `sui_chat::send_message` 传入
+   - 前端在发送前读取 `chatroom.last_chat_id`
+   - 用于防止并发冲突
+
+4. **`encrypted_content: vector<u8>`** - 从前端传入
+   - 前端使用 AES-256-GCM 加密消息
+   - 包含 IV（12 字节）+ 加密内容
+
+5. **`clock: &Clock`** - Clock 对象引用（地址 `0x6`）
+   - 用于获取准确的时间戳
+
+6. **`ctx: &mut TxContext`** - 交易上下文
+   - 用于创建新的 UID
+
+**为什么使用 `clock::timestamp_ms(clock)` 而不是 `tx_context::epoch_timestamp_ms(ctx)`？**
+
+| 方法 | 来源 | 精度 | 为什么选择？ |
+|------|------|------|------------|
+| `clock::timestamp_ms(clock)` | Clock 共享对象 | 高（由验证者维护） | ✅ **使用** - 更准确 |
+| `tx_context::epoch_timestamp_ms(ctx)` | 交易上下文 | 中（交易时间戳） | ❌ 不够精确 |
+
+**Clock 对象的优势：**
+- Clock 是共享对象，由 Sui 验证者维护
+- 时间戳更准确，反映链上的实际时间
+- 多个交易可以共享同一个 Clock 对象
+
+### Getter 函数
+
+```move
+/// Get the chat ID
+public fun id(chat: &Chat): ID {
+    object::id(chat)
+}
+
+/// Get the chatroom ID
+public fun chatroom_id(chat: &Chat): ID {
+    chat.chatroom_id
+}
+
+/// Get the sender address
+public fun sender(chat: &Chat): address {
+    chat.sender
+}
+
+/// Get the timestamp
+public fun timestamp(chat: &Chat): u64 {
+    chat.timestamp
+}
+
+/// Get the previous chat ID
+public fun previous_chat_id(chat: &Chat): option::Option<ID> {
+    chat.previous_chat_id
+}
+
+/// Get the encrypted content
+public fun encrypted_content(chat: &Chat): vector<u8> {
+    chat.encrypted_content
+}
+```
+
+**为什么需要这些 getter 函数？**
+- Move 语言中，结构体字段默认是**私有的**（private）
+- 需要 `public fun` 函数来访问字段
+- 提供只读访问，保护数据完整性
+
+**前端如何使用这些 getter？**
+- 前端通过 `getObject` API 直接读取对象字段
+- Sui SDK 会自动解析对象内容
+- 不需要显式调用这些 getter 函数（它们主要用于 Move 内部）
+
+### 实际使用场景
+
+**1. 创建消息（在 `send_message` 中）：**
+
+```move
+// 在 sui_chat.move 中
+let new_chat = chat::create(
+    chatroom_id,
+    sender,
+    previous_chat_id,
+    encrypted_content,
+    clock,
+    ctx,
+);
+let new_chat_id = chat::id(&new_chat);
+transfer::public_transfer(new_chat, sender); // 转移给发送者
+```
+
+**2. 前端查询消息：**
+
+```typescript
+// 从 chatroom.last_chat_id 开始
+const chatroom = await client.getObject({
+  id: chatroomId,
+  options: { showContent: true }
+});
+
+let currentChatId = chatroom.data.content.fields.last_chat_id;
+
+// 遍历链表
+while (currentChatId) {
+  const chat = await client.getObject({
+    id: currentChatId,
+    options: { showContent: true }
+  });
+  
+  // 解密消息
+  const decrypted = await decryptMessage(
+    chat.data.content.fields.encrypted_content,
+    key
+  );
+  
+  // 移动到前一个消息
+  currentChatId = chat.data.content.fields.previous_chat_id;
+}
+```
+
+**3. 显示消息时间：**
+
+```typescript
+const timestamp = chat.data.content.fields.timestamp; // u64 (毫秒)
+const date = new Date(Number(timestamp));
+const formatted = formatDistanceToNow(date, { addSuffix: true });
+// "2 minutes ago"
+```
+
+### 设计决策总结
+
+**为什么 Chat 是 owned object？**
+- ✅ 每个消息属于发送者
+- ✅ 查询效率高
+- ✅ 符合"谁发送谁拥有"的语义
+
+**为什么使用链表结构？**
+- ✅ 节省 gas（不需要在 Chatroom 中存储所有 ID）
+- ✅ 可扩展（可以无限添加消息）
+- ✅ 去中心化（每个消息是独立对象）
+
+**为什么 previous_chat_id 是 Option？**
+- ✅ 第一个消息没有前一个（`none`）
+- ✅ 其他消息有前一个（`some(id)`）
+- ✅ 类型安全，避免空指针错误
+
+**为什么使用 Clock 获取时间戳？**
+- ✅ 时间戳更准确（由验证者维护）
+- ✅ 多个交易可以共享同一个 Clock
+- ✅ 比 `tx_context::epoch_timestamp_ms` 更可靠
 
 ---
 
@@ -422,9 +665,239 @@ public struct Key has key, store {
 - `chatroom_id: ID` - 所属 chatroom 的 ID
 - `key: vector<u8>` - 加密密钥（32 字节）
 
+### 为什么 key 是 `vector<u8>`？
+
+**1. 加密密钥的本质：**
+- 加密密钥在计算机中本质上是**字节序列**（byte array）
+- AES-256-GCM 算法需要 **32 字节（256 位）**的密钥
+- 每个字节是 0-255 的整数值（`u8` = unsigned 8-bit integer）
+
+**2. Move 语言中的表示：**
+- `vector<u8>` 是 Move 语言中表示**字节数组**的标准方式
+- `vector` - 动态数组
+- `u8` - 无符号 8 位整数（0-255，正好是一个字节）
+
+**3. 前端与链上的数据转换：**
+
+**前端生成密钥：**
+```typescript
+// sui_hackathon/src/lib/crypto.ts
+export function generateKey(): Uint8Array {
+  return crypto.getRandomValues(new Uint8Array(32)); // 32 字节
+}
+```
+
+**前端使用密钥加密：**
+```typescript
+export async function encryptMessage(
+  message: string,
+  key: Uint8Array  // TypeScript 中的 Uint8Array
+): Promise<Uint8Array> {
+  // Web Crypto API 使用 Uint8Array
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    key as unknown as ArrayBuffer,  // 转换为 ArrayBuffer
+    { name: "AES-GCM" },
+    false,
+    ["encrypt"]
+  );
+  // ...
+}
+```
+
+**前端发送到链上：**
+```typescript
+// 在 CreateChatroomPage.tsx 中
+const key = generateKey(); // Uint8Array (32 bytes)
+const tx = new Transaction();
+tx.moveCall({
+  package: PACKAGE_ID,
+  module: MODULE_NAMES.SUI_CHAT,
+  function: FUNCTION_NAMES.CREATE_CHATROOM,
+  arguments: [
+    tx.pure.vector("address", memberAddresses),
+    tx.pure.vector("u8", Array.from(key)), // 转换为 number[] 然后传给 Move
+    tx.object("0x6"),
+  ],
+});
+```
+
+**Move 合约接收：**
+```move
+public fun create_chatroom(
+    member_addresses: vector<address>,
+    key: vector<u8>, // 接收 32 字节的密钥
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    assert!(vector::length(&key) == 32, EInvalidKeyLength); // 验证长度
+    // ...
+}
+```
+
+**4. 为什么不用其他类型？**
+
+| 类型 | 是否可行？ | 为什么？ |
+|------|----------|---------|
+| `vector<u8>` | ✅ **使用** | 标准字节数组，灵活，支持任意长度 |
+| `u256` | ❌ | 固定 256 位，但 Move 没有原生 `u256` 类型 |
+| `string` | ❌ | 字符串需要编码/解码，效率低，容易出错 |
+| `address` | ❌ | `address` 只有 20 字节，不够 32 字节 |
+| 固定数组 `[u8; 32]` | ⚠️ | Move 不支持固定大小数组，只能用 `vector` |
+
+**5. 数据流示例：**
+
+```
+前端生成密钥：
+  crypto.getRandomValues(new Uint8Array(32))
+  → [123, 45, 67, ...] (32 个字节)
+
+转换为 Move 参数：
+  Array.from(key)
+  → [123, 45, 67, ...] (number[])
+
+发送到链上：
+  tx.pure.vector("u8", [123, 45, 67, ...])
+  → vector<u8> in Move
+
+存储在 Key 对象中：
+  key: vector<u8> = [123, 45, 67, ...]
+
+从链上读取：
+  key::key(&key_obj)
+  → vector<u8>
+
+前端使用：
+  new Uint8Array([123, 45, 67, ...])
+  → 用于 Web Crypto API 加密/解密
+```
+
+**6. 为什么是 32 字节？**
+
+- **AES-256** 需要 256 位 = 32 字节的密钥
+- 这是 AES-GCM 算法的标准要求
+- 32 字节提供足够的安全性（256 位加密强度）
+
+**验证密钥长度：**
+```move
+// 在 create_chatroom 中
+assert!(vector::length(&key) == 32, EInvalidKeyLength);
+```
+
+**总结：**
+- `vector<u8>` 是 Move 中表示字节数组的标准方式
+- 与前端 `Uint8Array` 完美对应
+- 支持 AES-256-GCM 所需的 32 字节密钥
+- 灵活且类型安全
+
+### 为什么使用 `has key` ability？
+
+**`key` ability 的作用：**
+- 使结构体成为一个 **Sui 对象**（Object）
+- 必须有 `id: UID` 字段
+- 对象可以被存储在全局存储中
+- 对象可以被拥有（owned）或共享（shared）
+
+**如果没有 `key` ability：**
+- 结构体只是一个普通的数据结构，不能作为对象存储在链上
+- 无法被用户拥有
+- 无法通过对象 ID 查询
+
+**为什么 Key 需要是对象？**
+- 需要存储在链上，让用户拥有
+- 需要唯一标识（通过 `id: UID`）
+- 需要作为访问控制的凭证（拥有 Key = 有权限发送消息）
+
+### 为什么使用 `has store` ability？
+
+**`store` ability 的作用：**
+- 允许结构体被存储在全局存储中
+- 允许结构体作为字段存储在另一个对象中
+- **关键**：允许对象被转移（transfer）
+
+**如果没有 `store` ability：**
+- 对象创建后无法被转移给其他用户
+- 无法使用 `transfer::public_transfer()` 或 `transfer::transfer()`
+- 对象会"卡"在创建者那里
+
+**为什么 Key 需要 `store`？**
+- 在 `create_chatroom` 中，需要将 Key 对象转移给每个成员：
+  ```move
+  transfer::public_transfer(key_obj, member);
+  ```
+- 如果 Key 没有 `store` ability，这个转移操作会失败
+- 用户需要能够转移 Key（虽然我们提供了 `transfer_to` 函数，但 `store` 是基础）
+
+### 为什么 Key 是 owned object（而不是 shared object）？
+
+**Owned Object 的特点：**
+- 属于特定地址（owner）
+- 只有 owner 可以转移或删除
+- 查询效率高：可以通过 `sui_getOwnedObjects` 查询某个地址拥有的所有 Key
+- 不需要版本控制（不像 shared object）
+
+**如果 Key 是 shared object：**
+- ❌ 无法确定谁"拥有"这个 Key（shared object 没有 owner）
+- ❌ 无法通过 `sui_getOwnedObjects` 查询用户拥有的 Key
+- ❌ 需要额外的机制来管理访问控制
+- ❌ 增加不必要的复杂性（shared object 需要版本控制）
+
+**为什么每个成员都有独立的 Key 对象？**
+- 虽然所有 Key 对象包含相同的加密密钥（`key: vector<u8>`）
+- 但每个成员拥有自己的 Key 对象实例
+- 这样设计的好处：
+  1. **访问控制**：通过检查用户是否拥有 Key 对象来判断权限
+  2. **查询便利**：用户可以通过查询自己拥有的对象来找到相关的 chatroom
+  3. **灵活性**：如果将来需要撤销某个成员的访问权限，可以设计一个机制来"销毁"或"转移"他们的 Key
+
+### Abilities 组合对比
+
+| Abilities | 类型 | 能否转移？ | 能否共享？ | 用途 |
+|-----------|------|-----------|-----------|------|
+| `has key` | Object | ❌ | ❌ | 需要是对象，但不可转移（很少用） |
+| `has key, store` | Owned Object | ✅ | ❌ | **Key 的选择** - 可拥有、可转移 |
+| `has key` (shared) | Shared Object | ❌ | ✅ | Chatroom 的选择 - 可共享、不可转移 |
+
+**为什么 Key 不只用 `has key`？**
+- 如果只有 `key` 而没有 `store`，对象无法被转移
+- 在 `create_chatroom` 中无法将 Key 分发给成员
+- 不符合我们的设计需求
+
+**为什么 Key 不设计成 shared object？**
+- Shared object 没有 owner，无法实现"拥有 Key = 有权限"的逻辑
+- 查询效率低，无法通过 `sui_getOwnedObjects` 快速找到用户拥有的 Key
+- 增加不必要的复杂性
+
+### 实际使用场景
+
+**1. 创建 chatroom 时分发 Key：**
+```move
+// 在 create_chatroom 中
+let key_obj = key::create(chatroom_id, key, ctx);
+transfer::public_transfer(key_obj, member); // 需要 store ability
+```
+
+**2. 发送消息时验证权限：**
+```move
+// 在 send_message 中
+assert!(key::verify_chatroom(key, chatroom_id), EKeyMismatch);
+// 用户必须拥有 Key 对象才能调用此函数
+```
+
+**3. 前端查询用户拥有的 chatroom：**
+```typescript
+// 前端代码
+const ownedObjects = await suiClient.getOwnedObjects({
+  owner: userAddress,
+  filter: { StructType: `${PACKAGE_ID}::key::Key` }
+});
+// 通过拥有的 Key 对象，找到对应的 chatroom_id
+```
+
 **为什么 Key 是 owned object？**
 - 每个成员拥有自己的 Key 对象
 - 用于访问控制：只有拥有 Key 的用户才能发送消息
+- 便于查询：用户可以通过查询自己拥有的对象来找到相关的 chatroom
 
 ### verify_chatroom 函数
 
