@@ -96,47 +96,69 @@ export default async function handler(req: any, res: any) {
 
     // POST - Add a friend
     if (req.method === 'POST') {
-      const { address, friendAddress } = req.body;
+      try {
+        const { address, friendAddress } = req.body;
 
-      if (!address || !friendAddress) {
-        return res.status(400).json({ error: 'Address and friendAddress are required' });
-      }
+        console.log('Add friend request:', { address, friendAddress });
 
-      if (address === friendAddress) {
-        return res.status(400).json({ error: 'Cannot add yourself as a friend' });
-      }
+        if (!address || !friendAddress) {
+          console.error('Missing required fields:', { address: !!address, friendAddress: !!friendAddress });
+          return res.status(400).json({ error: 'Address and friendAddress are required' });
+        }
 
-      // Check if friend already exists
-      const profile = await profilesCollection.findOne({ address });
-      if (profile?.friends?.includes(friendAddress)) {
+        if (address === friendAddress) {
+          return res.status(400).json({ error: 'Cannot add yourself as a friend' });
+        }
+
+        // Check if friend already exists
+        const profile = await profilesCollection.findOne({ address });
+        console.log('Current profile:', profile ? { address: profile.address, friendsCount: profile.friends?.length || 0 } : 'not found');
+        
+        if (profile?.friends?.includes(friendAddress)) {
+          return res.status(200).json({
+            success: true,
+            added: false,
+            message: "Friend already added",
+          });
+        }
+
+        // Ensure friends array exists
+        const currentFriends = profile?.friends || [];
+        
+        const result = await profilesCollection.updateOne(
+          { address },
+          {
+            $addToSet: { friends: friendAddress },
+            $setOnInsert: { 
+              address,
+              createdAt: new Date(),
+              friends: [],
+              chatroomCount: 0,
+            },
+            $set: {
+              updatedAt: new Date(),
+            },
+          },
+          { upsert: true }
+        );
+
+        console.log('Update result:', {
+          matchedCount: result.matchedCount,
+          modifiedCount: result.modifiedCount,
+          upsertedCount: result.upsertedCount,
+        });
+
+        const wasAdded = result.modifiedCount > 0 || result.upsertedCount > 0;
+        
         return res.status(200).json({
           success: true,
-          added: false,
-          message: "Friend already added",
+          added: wasAdded,
+          message: wasAdded ? "Friend added successfully" : "Friend already exists",
         });
+      } catch (postError: any) {
+        console.error('Error in POST /api/friends:', postError);
+        throw postError; // Re-throw to be caught by outer catch
       }
-
-      const result = await profilesCollection.updateOne(
-        { address },
-        {
-          $addToSet: { friends: friendAddress },
-          $setOnInsert: { 
-            address,
-            createdAt: new Date(),
-            friends: [],
-            chatroomCount: 0,
-          },
-        },
-        { upsert: true }
-      );
-
-      const wasAdded = result.modifiedCount > 0 || result.upsertedCount > 0;
-      
-      return res.status(200).json({
-        success: true,
-        added: wasAdded,
-        message: wasAdded ? "Friend added successfully" : "Friend already exists",
-      });
     }
 
     // DELETE - Remove a friend
