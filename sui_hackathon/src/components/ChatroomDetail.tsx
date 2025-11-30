@@ -434,7 +434,10 @@ export function ChatroomDetail() {
     }
 
     // Set up polling to check for new messages every 3 seconds
+    if (!chatroomId) return; // Ensure chatroomId is defined
+    
     pollingIntervalRef.current = setInterval(async () => {
+      if (!chatroomId) return; // Double check in callback
       try {
         const chatroom = await client.getObject({
           id: chatroomId,
