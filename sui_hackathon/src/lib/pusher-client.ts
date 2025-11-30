@@ -15,15 +15,15 @@ if (typeof window !== 'undefined' && PUSHER_KEY) {
   
   // Log connection status for debugging
   pusherClient.connection.bind('connected', () => {
-    console.log('Pusher connected');
+    console.log('[Pusher] ✅ Connected successfully');
   });
   
   pusherClient.connection.bind('disconnected', () => {
-    console.warn('Pusher disconnected');
+    console.warn('[Pusher] ⚠️ Disconnected');
   });
   
   pusherClient.connection.bind('state_change', (states: any) => {
-    console.log('Pusher state changed:', states.previous, '->', states.current);
+    console.log(`[Pusher] State: ${states.previous} → ${states.current}`);
   });
   
   pusherClient.connection.bind('error', (err: any) => {
@@ -32,13 +32,17 @@ if (typeof window !== 'undefined' && PUSHER_KEY) {
     // Code 1000 is a normal closure
     const errorCode = err?.error?.data?.code || err?.code;
     if (errorCode !== 1006 && errorCode !== 1000) {
-      console.warn('Pusher connection error (non-critical):', {
+      console.warn('[Pusher] Connection error:', {
         type: err?.type,
         code: errorCode,
         message: err?.error?.data?.message || err?.message,
       });
     }
-    // Don't log as error - Pusher will auto-retry, and we have polling as fallback
+  });
+  
+  // Log when connection is established
+  pusherClient.connection.bind('connected', () => {
+    console.log('[Pusher] Ready for real-time updates');
   });
 }
 
