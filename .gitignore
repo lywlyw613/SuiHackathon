@@ -27,3 +27,9 @@ build/
 # OS
 .DS_Store
 Thumbs.db
+
+# Frontend examples (not part of main project)
+frontend_example/
+
+# Unused documentation files
+frontend_example/**/*.md
