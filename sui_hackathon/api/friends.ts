@@ -124,9 +124,6 @@ export default async function handler(req: any, res: any) {
           });
         }
 
-        // Ensure friends array exists
-        const currentFriends = profile?.friends || [];
-        
         const result = await profilesCollection.updateOne(
           { address },
           {
