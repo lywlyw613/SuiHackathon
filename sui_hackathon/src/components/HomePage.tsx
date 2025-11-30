@@ -1,4 +1,4 @@
-import { ConnectButton } from "@mysten/dapp-kit";
+import { ConnectButton, useCurrentAccount } from "@mysten/dapp-kit";
 import { useNavigate } from "react-router-dom";
 import { ChatroomList } from "./ChatroomList";
 import { useState } from "react";
@@ -6,11 +6,18 @@ import { Box, Container, Flex, Heading, TextField, Button } from "@radix-ui/them
 
 export function HomePage() {
   const navigate = useNavigate();
+  const currentAccount = useCurrentAccount();
   const [searchQuery, setSearchQuery] = useState("");
 
   const handleSearch = () => {
     if (searchQuery.trim()) {
       navigate(`/profile/${searchQuery.trim()}`);
+    }
+  };
+
+  const handleMyProfile = () => {
+    if (currentAccount?.address) {
+      navigate(`/profile/${currentAccount.address}`);
     }
   };
 
@@ -51,6 +58,15 @@ export function HomePage() {
               >
                 Search
               </Button>
+              {currentAccount?.address && (
+                <Button
+                  onClick={handleMyProfile}
+                  className="x-button-primary"
+                  style={{ minWidth: "auto", fontWeight: 600 }}
+                >
+                  My Profile
+                </Button>
+              )}
               <ConnectButton />
             </Flex>
           </Flex>
@@ -63,13 +79,24 @@ export function HomePage() {
           <Heading size="5" style={{ color: "var(--x-white)", fontWeight: 700 }}>
             Your Chatrooms
           </Heading>
-          <Button 
-            onClick={() => navigate("/create")} 
-            className="x-button-primary"
-            size="3"
-          >
-            Create Chatroom
-          </Button>
+          <Flex gap="3">
+            {currentAccount?.address && (
+              <Button 
+                onClick={handleMyProfile}
+                className="x-button-secondary"
+                size="3"
+              >
+                My Profile
+              </Button>
+            )}
+            <Button 
+              onClick={() => navigate("/create")} 
+              className="x-button-primary"
+              size="3"
+            >
+              Create Chatroom
+            </Button>
+          </Flex>
         </Flex>
         <ChatroomList />
       </Container>
