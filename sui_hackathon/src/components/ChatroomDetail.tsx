@@ -376,8 +376,13 @@ export function ChatroomDetail() {
           // Listen for new message events (client events must start with 'client-')
           const messageHandler = (data: any) => {
             console.log(`[Pusher] 📨 New message event received for ${channelName}:`, data);
-            // Trigger refetch by updating previousChatId
+            console.log(`[Pusher] Event data:`, JSON.stringify(data, null, 2));
+            
+            // Immediately trigger refetch by updating previousChatId
+            // This will cause the useEffect to refetch all chats
             if (chatroomId) {
+              console.log(`[Pusher] 🔄 Triggering chat refresh for chatroom: ${chatroomId}`);
+              
               // Small delay to ensure transaction is processed on-chain
               setTimeout(() => {
                 client.getObject({
@@ -402,12 +407,20 @@ export function ChatroomDetail() {
                 }).catch((err) => {
                   console.error('[Pusher] ❌ Error refetching chatroom after event:', err);
                 });
-              }, 1000); // Wait 1 second for transaction to be processed
+              }, 1500); // Wait 1.5 seconds for transaction to be processed
             }
           };
           
+          // Bind the event handler
           channel.bind('client-new-message', messageHandler);
           console.log(`[Pusher] 👂 Listening for 'client-new-message' events on ${channelName}`);
+          
+          // Also test if we can receive events by logging all channel events
+          channel.bind_global((eventName: string, data: any) => {
+            if (eventName === 'client-new-message') {
+              console.log(`[Pusher] 🌐 Global event handler received: ${eventName}`, data);
+            }
+          });
 
           // Handle subscription errors
           channel.bind('pusher:subscription_error', (error: any) => {
