@@ -1,5 +1,5 @@
 # Sui Chat - Encrypted Chat on Sui Chain
-
+This project was rewarded the 1st place at Sui Foundation Taipei Bootcamp Hack 2025
 A decentralized encrypted chat application built on Sui blockchain, where each message is stored as an on-chain object with encrypted content.
 
 ## Core Architecture
